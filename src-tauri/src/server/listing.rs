@@ -186,7 +186,8 @@ pub fn render(
 
     let upload_button = if uploads {
         format!(
-            r#"<button class="btn up-btn" id="up-open" type="button">{}</button>"#,
+            r#"<button class="btn up-btn" id="key-open" type="button" hidden>{}</button><button class="btn up-btn" id="up-open" type="button" hidden>{}</button>"#,
+            escape_html(&t("upload.set_key")),
             escape_html(&t("upload.open"))
         )
     } else {
@@ -210,8 +211,10 @@ pub fn render(
       <input id="up-files" type="file" multiple hidden>
     </div>
     <div class="keyrow">
-      <input id="up-key" type="password" placeholder="{key}" autocomplete="off" spellcheck="false">
-      <button class="btn ghost" id="up-save" type="button">{save}</button>
+      <div class="keyfield">
+        <input id="up-key" type="password" placeholder="{key}" autocomplete="off" spellcheck="false">
+        <button class="clear-btn" id="up-clear" type="button" aria-label="{clear}" title="{clear}">×</button>
+      </div>
     </div>
     <div class="up-status hint" id="up-status"></div>
     <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
@@ -223,8 +226,8 @@ pub fn render(
             hint = escape_html(&t("upload.hint")),
             drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
-            save = escape_html(&t("upload.save")),
             key = escape_html(&t("upload.key")),
+            clear = escape_html(&t("upload.clear")),
             dropping = escape_html(&t("upload.dropping")),
         )
     } else {
@@ -604,6 +607,15 @@ const UPLOAD_CSS: &str = r#"
 .progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .2s; }
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
 .keyrow { display: flex; gap: 8px; }
+.keyfield { position: relative; flex: 1; min-width: 0; }
+.keyfield input { width: 100%; padding-right: 34px; }
+.clear-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; border: none; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  font-size: 17px; line-height: 1; cursor: pointer;
+}
+.clear-btn:hover { background: var(--row-hover); color: var(--text); }
 .keyrow input {
   flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px;
   background: var(--card); color: var(--text); font-size: 13px; outline: none;
@@ -617,13 +629,14 @@ const UPLOAD_JS: &str = r#"
   const modal = document.getElementById('up-modal');
   if (!modal) return;
   const openBtn = document.getElementById('up-open');
+  const keyBtn = document.getElementById('key-open');
+  const clearBtn = document.getElementById('up-clear');
   const closeBtn = document.getElementById('up-close');
   const overlay = document.getElementById('up-overlay');
   const drop = document.getElementById('up-drop');
   const pick = document.getElementById('up-pick');
   const input = document.getElementById('up-files');
   const keyInput = document.getElementById('up-key');
-  const save = document.getElementById('up-save');
   const status = document.getElementById('up-status');
   const progress = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar');
@@ -636,15 +649,27 @@ const UPLOAD_JS: &str = r#"
   }
   try { keyInput.value = localStorage.getItem(storeKey) || ''; } catch (e) {}
   const remember = () => { try { localStorage.setItem(storeKey, keyInput.value.trim()); } catch (e) {} };
-  save.addEventListener('click', remember);
-  keyInput.addEventListener('change', remember);
+  const syncActions = () => {
+    const hasKey = keyInput.value.trim().length > 0;
+    if (openBtn) openBtn.hidden = !hasKey;
+    if (keyBtn) keyBtn.hidden = hasKey;
+  };
+  keyInput.addEventListener('input', () => { remember(); syncActions(); });
+  clearBtn.addEventListener('click', () => {
+    keyInput.value = '';
+    try { localStorage.removeItem(storeKey); } catch (e) {}
+    syncActions();
+    keyInput.focus();
+  });
+  syncActions();
 
   const openModal = () => {
     modal.hidden = false;
     if (!keyInput.value.trim()) keyInput.focus();
   };
   const closeModal = () => { modal.hidden = true; };
-  openBtn.addEventListener('click', openModal);
+  if (openBtn) openBtn.addEventListener('click', openModal);
+  if (keyBtn) keyBtn.addEventListener('click', openModal);
   closeBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !modal.hidden) closeModal(); });
@@ -709,7 +734,12 @@ const UPLOAD_JS: &str = r#"
           bar.style.width = percent + '%';
         }
       };
-      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(String(xhr.status)));
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) return resolve();
+        let message = '';
+        try { message = JSON.parse(xhr.responseText).message || ''; } catch (e) {}
+        reject(new Error(message || ('HTTP ' + xhr.status)));
+      };
       xhr.onerror = () => reject(new Error('network'));
       xhr.send(file);
     });
@@ -719,13 +749,19 @@ const UPLOAD_JS: &str = r#"
     if (!files.length) return;
     const key = keyInput.value.trim();
     if (!key) { status.textContent = UP_MSG.needKey; keyInput.focus(); return; }
-    remember();
     let failed = 0;
+    let lastError = '';
     for (let index = 0; index < files.length; index++) {
       status.textContent = UP_MSG.uploading + ' ' + (index + 1) + '/' + files.length;
-      try { await send(files[index], key); } catch (error) { failed++; }
+      try {
+        await send(files[index], key);
+      } catch (error) {
+        failed++;
+        lastError = error.message || UP_MSG.failed;
+        status.textContent = files[index].name + ' · ' + lastError;
+      }
     }
-    status.textContent = failed ? UP_MSG.failed : UP_MSG.done;
+    status.textContent = failed ? lastError : UP_MSG.done;
     progress.hidden = true;
     bar.style.width = '0%';
     if (!failed) setTimeout(() => location.reload(), 600);

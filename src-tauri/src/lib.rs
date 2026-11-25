@@ -57,6 +57,7 @@ pub fn run() {
             commands::update_prefs,
             commands::suggest_port,
             commands::update_upload,
+            commands::update_password,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

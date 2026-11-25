@@ -11,7 +11,6 @@ interface Settings {
   shares: string[];
   port: number;
   password: string | null;
-  remember_password: boolean;
   auto_start: boolean;
   minimize_to_tray: boolean;
   allow_uploads: boolean;
@@ -60,7 +59,7 @@ const elements = {
   passwordLabel: $("password-label"),
   passwordHint: $("password-hint"),
   password: $<HTMLInputElement>("password"),
-  rememberLabel: $("remember-label"),
+  passwordClear: $<HTMLButtonElement>("password-clear"),
   allowUploadsLabel: $("allow-uploads-label"),
   allowUploads: $<HTMLInputElement>("allow-uploads"),
   uploadSettings: $("upload-settings"),
@@ -71,7 +70,6 @@ const elements = {
   maxUploadLabel: $("max-upload-label"),
   maxUpload: $<HTMLInputElement>("max-upload"),
   uploadHint: $("upload-hint"),
-  remember: $<HTMLInputElement>("remember"),
   error: $("error"),
   primary: $<HTMLButtonElement>("primary"),
   runningCard: $("running-card"),
@@ -104,12 +102,28 @@ let busy = false;
 let localError: string | null = null;
 let qrFor: string | null = null;
 let selectedUrl: string | null = null;
+let passwordTimer: number | null = null;
+
+async function persistPassword(password: string | null): Promise<void> {
+  try {
+    snapshot = await invoke<Snapshot>("update_password", { password });
+    apply();
+  } catch {
+    /* keep the field as the user typed it */
+  }
+}
+
+function schedulePasswordSave(): void {
+  draft.password = elements.password.value;
+  if (passwordTimer !== null) window.clearTimeout(passwordTimer);
+  const value = elements.password.value || null;
+  passwordTimer = window.setTimeout(() => void persistPassword(value), 350);
+}
 
 const draft = {
   shares: [] as string[],
   port: 8000,
   password: "",
-  remember: false,
 };
 
 const t = (key: string, vars?: Record<string, string | number>): string =>
@@ -128,7 +142,7 @@ function text() {
     port: t("ui.port"),
     password: t("ui.password"),
     passwordHint: t("ui.password_hint"),
-    remember: t("ui.remember"),
+    clear: t("ui.clear"),
     start: t("ui.start"),
     stop: t("ui.stop"),
     urls: t("ui.urls"),
@@ -168,7 +182,6 @@ function text() {
 function syncInputs(): void {
   const settings = snapshot?.settings;
   elements.port.value = String(settings?.port ?? draft.port);
-  elements.remember.checked = settings?.remember_password ?? draft.remember;
   elements.password.value = draft.password;
   elements.autoStart.checked = settings?.auto_start ?? false;
   elements.tray.checked = settings?.minimize_to_tray ?? true;
@@ -252,7 +265,9 @@ function apply(): void {
   elements.portLabel.textContent = label.port;
   elements.passwordLabel.textContent = label.password;
   elements.passwordHint.textContent = label.passwordHint;
-  elements.rememberLabel.textContent = label.remember;
+  elements.passwordClear.textContent = "×";
+  elements.passwordClear.title = label.clear;
+  elements.passwordClear.setAttribute("aria-label", label.clear);
   elements.allowUploadsLabel.textContent = label.uploads;
   elements.uploadKeyLabel.textContent = label.uploadKey;
   elements.regenKey.textContent = label.regenerate;
@@ -304,7 +319,6 @@ function apply(): void {
     elements.addFolder,
     elements.port,
     elements.password,
-    elements.remember,
   ]) {
     (control as HTMLInputElement | HTMLButtonElement).disabled = running || busy;
   }
@@ -413,9 +427,7 @@ async function start(): Promise<void> {
       shares: draft.shares,
       port: Number(elements.port.value),
       password: elements.password.value || null,
-      rememberPassword: elements.remember.checked,
     });
-    draft.remember = snapshot.settings.remember_password;
     syncInputs();
   } catch (error) {
     localError = String(error);
@@ -511,7 +523,6 @@ async function boot(): Promise<void> {
   draft.shares = [...snapshot.settings.shares];
   draft.port = snapshot.settings.port;
   draft.password = snapshot.settings.password ?? "";
-  draft.remember = snapshot.settings.remember_password;
 
   if (stored !== locale) {
     snapshot = await invoke<Snapshot>("update_prefs", { locale });
@@ -544,6 +555,14 @@ async function boot(): Promise<void> {
 }
 
 elements.addFolder.addEventListener("click", () => void addFolder());
+elements.password.addEventListener("input", schedulePasswordSave);
+elements.passwordClear.addEventListener("click", () => {
+  elements.password.value = "";
+  draft.password = "";
+  if (passwordTimer !== null) window.clearTimeout(passwordTimer);
+  void persistPassword(null);
+  elements.password.focus();
+});
 elements.tabShare.addEventListener("click", () => {
   tab = "share";
   apply();

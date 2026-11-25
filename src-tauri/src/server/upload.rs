@@ -6,7 +6,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::http::{Request, Response, escape_html, query_pairs, query_param, split_target};
+use super::http::{Request, Response, query_pairs, query_param, split_target};
 use super::{ServerContext, i18n};
 
 #[derive(Clone, Debug)]
@@ -222,13 +222,13 @@ fn serde_json_string(value: &str) -> String {
 }
 
 fn fail(status: u16, locale: &str, key: &str) -> Response {
-    let message = i18n::t(locale, key);
-    let body = format!(
-        "<!doctype html><html lang=\"{}\"><meta charset=\"utf-8\"><title>Upload</title><body style=\"font:15px system-ui;padding:40px\"><h2>{status}</h2><p>{}</p></body></html>",
-        escape_html(locale),
-        escape_html(&message)
-    );
-    Response::html(status, body).header("Cache-Control", "no-store")
+    let body = serde_json::json!({
+        "error": key,
+        "message": i18n::t(locale, key),
+    })
+    .to_string();
+    Response::bytes(status, "application/json; charset=utf-8", body.into_bytes())
+        .header("Cache-Control", "no-store")
 }
 
 #[cfg(test)]

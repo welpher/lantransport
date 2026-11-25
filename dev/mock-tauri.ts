@@ -28,6 +28,10 @@ const snapshot = {
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (command === "get_snapshot") return structuredClone(snapshot) as T;
+  if (command === "update_password") {
+    snapshot.settings.password = (args?.password as string | null) ?? null;
+    return structuredClone(snapshot) as T;
+  }
   if (command === "update_prefs" || command === "update_upload") {
     Object.assign(snapshot.settings, args);
     return structuredClone(snapshot) as T;
@@ -60,3 +64,5 @@ export async function writeText(): Promise<void> {}
 export async function openUrl(): Promise<void> {}
 
 export async function revealItemInDir(): Promise<void> {}
+
+(globalThis as unknown as { __mockSnapshot: () => unknown }).__mockSnapshot = () => structuredClone(snapshot);

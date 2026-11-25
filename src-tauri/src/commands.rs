@@ -37,11 +37,7 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
             .settings
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let password = if settings.remember_password {
-            settings.password.clone()
-        } else {
-            None
-        };
+        let password = settings.password.clone();
         (
             settings.shares.clone(),
             settings.port,
@@ -144,14 +140,10 @@ pub fn start_sharing(
     shares: Vec<String>,
     port: u16,
     password: Option<String>,
-    remember_password: bool,
 ) -> Result<Snapshot, String> {
     let password = password.filter(|value| !value.is_empty());
     if shares.is_empty() {
         return Err("no_folder".into());
-    }
-    if remember_password && password.is_none() {
-        return Err("empty_password".into());
     }
     if let Some(value) = password.as_ref()
         && value.chars().count() < 4
@@ -166,12 +158,7 @@ pub fn start_sharing(
             .unwrap_or_else(|error| error.into_inner());
         settings.shares = shares.clone();
         settings.port = port;
-        settings.remember_password = remember_password;
-        settings.password = if remember_password {
-            password.clone()
-        } else {
-            None
-        };
+        settings.password = password.clone();
     }
     let settings = app
         .state::<AppState>()
@@ -289,6 +276,24 @@ fn generate_upload_key() -> String {
         key.push(ALPHABET[(hasher.finish() % ALPHABET.len() as u64) as usize] as char);
     }
     key
+}
+
+#[tauri::command]
+pub fn update_password(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    password: Option<String>,
+) -> Snapshot {
+    let settings = {
+        let mut settings = state
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        settings.password = password.filter(|value| !value.is_empty());
+        settings.clone()
+    };
+    let _ = settings.save(&app);
+    state::snapshot(&app)
 }
 
 #[tauri::command]

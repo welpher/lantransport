@@ -17,9 +17,9 @@ files to the public internet.
 - **Uploads** require the upload key. It is compared in constant time and sent in
   the `X-Upload-Key` header (or a `?key=` link parameter). Keys are shown in the
   desktop app and stored in the page's `localStorage`.
-- **Password storage**: the browsing password is only saved when *Remember
-  password* is checked, in the app config file with `0600` permissions on Unix.
-  It is not hashed.
+- **Password storage**: the browsing password is saved as you type, in the app
+  config file with `0600` permissions on Unix. It is stored in plain text; use the
+  clear button in the field to remove it.
 - **Path confinement**: every request is resolved with `canonicalize` per shared
   folder and must stay inside that folder. Hidden entries (`dotfiles`) are never listed or
   served, and upload file names are sanitized. Symlinks pointing outside the root

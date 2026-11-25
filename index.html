@@ -77,14 +77,11 @@
             </label>
             <div class="field">
               <label for="password" id="password-label"></label>
-              <input id="password" type="password" autocomplete="new-password" />
-              <div class="field-foot">
-                <small id="password-hint" class="hint"></small>
-                <label class="check compact">
-                  <input id="remember" type="checkbox" />
-                  <span id="remember-label"></span>
-                </label>
+              <div class="input-wrap">
+                <input id="password" type="password" autocomplete="new-password" />
+                <button class="clear-btn" id="password-clear" type="button">×</button>
               </div>
+              <small id="password-hint" class="hint"></small>
             </div>
             <p class="hint" id="settings-locked" hidden></p>
           </section>

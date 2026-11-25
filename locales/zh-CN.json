@@ -10,7 +10,6 @@
   "ui.port": "端口",
   "ui.password": "访问口令（可选）",
   "ui.password_hint": "用户名固定为 share",
-  "ui.remember": "记住口令",
   "ui.start": "开始共享",
   "ui.stop": "停止共享",
   "ui.urls": "访问地址",
@@ -33,7 +32,6 @@
   "error.permission_denied": "没有权限，试试 1024 以上的端口。",
   "error.invalid_port": "端口必须在 1–65535 之间。",
   "error.short_password": "口令至少 4 个字符。",
-  "error.empty_password": "请输入口令，或取消「记住口令」。",
   "error.no_folder": "先选择要共享的文件夹。",
   "error.not_running": "先开始共享，才能复制上传链接。",
   "error.io": "启动失败，请重试。",
@@ -53,7 +51,6 @@
   "upload.title": "上传文件",
   "upload.hint": "需要上传 key · 文件会存到第一个文件夹的 uploads/",
   "upload.choose": "选择文件",
-  "upload.save": "记住",
   "upload.need_key": "先填写上传 key",
   "upload.failed": "有文件上传失败",
   "upload.done": "上传完成，正在刷新…",
@@ -102,5 +99,8 @@
   "upload.close": "关闭",
   "upload.dropping": "松开即可上传",
   "page.all_files": "共享文件",
-  "page.preview": "预览"
+  "page.preview": "预览",
+  "ui.clear": "清空",
+  "upload.set_key": "设置上传 key",
+  "upload.clear": "清空上传 key"
 }
