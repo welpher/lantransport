@@ -69,7 +69,8 @@ pub fn render(
             .map_or("/", |(head, _)| head);
         let parent = if parent.is_empty() { "/" } else { parent };
         rows.push_str(&format!(
-            "<tr class='dir' data-name='..'><td><div class='name'><span class='ext'>DIR</span><a href='{}'>..</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
+            "<tr class='dir' data-name='..' data-href='{}'><td><div class='name'><span class='ext'>DIR</span><a href='{}'>..</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
+            escape_html(&format!("{}/", parent.trim_end_matches('/'))),
             escape_html(&format!("{}/", parent.trim_end_matches('/')))
         ));
     }
@@ -88,8 +89,9 @@ pub fn render(
     for entry in &dirs {
         let name = escape_html(&entry.name);
         rows.push_str(&format!(
-            "<tr class='dir' data-name='{}'><td><div class='name'><span class='ext'>DIR</span><a href='{}/'>{}/</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
+            "<tr class='dir' data-name='{}' data-href='{}/'><td><div class='name'><span class='ext'>DIR</span><a href='{}/'>{}/</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
             escape_html(&entry.name.to_lowercase()),
+            encode_segment(&entry.name),
             encode_segment(&entry.name),
             name
         ));
@@ -118,7 +120,7 @@ pub fn render(
                 |time| time.format("%Y-%m-%d %H:%M").to_string(),
             );
             rows.push_str(&format!(
-                "<tr data-name='{}'><td><div class='name'><span class='ext'>{}</span><a href='{href}'>{}</a>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{download}'>{}</a></td></tr>",
+                "<tr data-name='{}' data-href='{download}'><td><div class='name'><span class='ext'>{}</span><a href='{href}'>{}</a>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{download}'>{}</a></td></tr>",
                 escape_html(&entry.name.to_lowercase()),
                 escape_html(&ext_label(&entry.name, false)),
                 escape_html(&entry.name),
@@ -273,6 +275,12 @@ q.addEventListener('input', () => {{
 q.addEventListener('keydown', event => {{
   if (event.key === 'Escape') {{ q.value = ''; q.dispatchEvent(new Event('input')); }}
 }});
+document.querySelectorAll('#list tr[data-href]').forEach(row => {{
+  row.addEventListener('click', event => {{
+    if (event.target.closest('a, button')) return;
+    window.location.href = row.getAttribute('data-href');
+  }});
+}});
 const lang = document.getElementById('lang');
 if (lang) {{
   if (new URLSearchParams(location.search).get('lang')) {{
@@ -373,6 +381,7 @@ th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--li
 th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--row-hover); }
+#list tr[data-href] { cursor: pointer; }
 .name { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .name a { color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
 .name a:hover { color: var(--accent); }
