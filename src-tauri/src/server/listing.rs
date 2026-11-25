@@ -437,6 +437,87 @@ tbody tr:hover { background: var(--row-hover); }
   .list-card td.act .btn { display: block; text-align: center; }
   .list-card .name { flex-wrap: wrap; }
 }
+
+
+/* header, brand, upload dialog */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  opacity: 1;
+}
+.brand:hover { opacity: 1; text-decoration: none; }
+.brand-mark { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.top-actions select {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.up-btn { display: inline-flex; align-items: center; gap: 6px; }
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 14, 20, 0.45);
+}
+.modal-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; }
+.modal-head strong { font-size: 14px; }
+.icon-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.icon-x:hover { color: var(--text); background: var(--row-hover); }
+.drop-overlay {
+  position: fixed;
+  inset: 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px dashed var(--accent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.foot-brand { color: inherit; text-decoration: none; opacity: .7; }
+.foot-brand:hover { opacity: 1; text-decoration: underline; }
 "#;
 
 const UPLOAD_CSS: &str = r#"
