@@ -40,17 +40,34 @@ No account, no cloud, no relay: the files never leave your network.
 
 ## Install
 
-Download the installer for your platform from [Releases](../../releases).
+### Homebrew (macOS)
+
+```bash
+brew install --cask welpher/tap/lantransport
+```
+
+### winget (Windows)
+
+```powershell
+winget install welpher.LanTransport
+```
+
+### Arch Linux (AUR)
+
+```bash
+yay -S lantransport-bin
+```
+
+### Direct downloads
 
 | Platform | File |
 |---|---|
-| macOS | `.dmg` (Universal) |
-| Windows | `.exe` (NSIS) |
+| macOS | `.dmg` (universal) |
+| Windows | `.exe` (NSIS) or `.msi` |
 | Linux | `.AppImage`, `.deb`, `.rpm` |
 
 Builds are not code-signed yet, so macOS Gatekeeper and Windows SmartScreen will
-warn on first launch. On macOS: right-click the app → **Open**. Verify the
-checksums published with each release if you like.
+warn on first launch. On macOS: right-click the app → **Open**.
 
 ## How it works
 

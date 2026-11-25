@@ -1,0 +1,24 @@
+pkgname=lantransport-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Share files across your local network"
+arch=('x86_64')
+url="https://github.com/welpher/lantransport"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
+provides=('lantransport')
+conflicts=('lantransport')
+source=("$pkgname-$pkgver.AppImage::https://github.com/welpher/lantransport/releases/download/v$pkgver/LanTransport_${pkgver}_amd64.AppImage")
+sha256sums=('9b629f5f77792a95cc8021264332f022732559b6a81682cf02f0b94eacff9f47')
+
+package() {
+  install -Dm755 "$srcdir/$pkgname-$pkgver.AppImage" "$pkgdir/usr/bin/lantransport"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/lantransport.desktop" <<'DESK'
+[Desktop Entry]
+Name=LanTransport
+Comment=Share files across your local network
+Exec=lantransport
+Type=Application
+Categories=Utility;Network;
+DESK
+}
