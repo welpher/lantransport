@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "icons": "node scripts/make-icons.mjs && tauri icon assets/icon.png",
     "check": "tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml",
-    "test": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "preview:ui": "vite --config dev/preview.config.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/node": "26.6.6",
     "@types/qrcode": "^1.5.6",
     "sharp": "^0.35.5",
     "typescript": "~6.0.3",

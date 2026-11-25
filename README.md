@@ -68,6 +68,7 @@ pnpm tauri dev          # desktop app with hot reload
 pnpm tauri build        # installers in src-tauri/target/release/bundle
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm icons              # regenerate app/tray icons from assets/*.svg
+pnpm preview:ui         # UI only, mocked IPC → http://localhost:1421/?mode=running&uploads=1
 ```
 
 Layout:
