@@ -45,7 +45,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Version matches the tag
         run: |
-          node -e "const v = require('./package.json').version; const tag = process.env.RELEASE_TAG.replace(/^v/, ''); if (v !== tag) { console.error('package.json ' + v + ' != tag ' + tag); process.exit(1); }"
+          node -e "const fs = require('fs'); const tag = process.env.RELEASE_TAG.replace(/^v/, ''); const pkg = require('./package.json').version; const conf = require('./src-tauri/tauri.conf.json').version; const cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8').match(/^version = \"(.*)\"$/m)[1]; for (const [name, v] of [['package.json', pkg], ['tauri.conf.json', conf], ['Cargo.toml', cargo]]) { if (v !== tag) { console.error(name + ' ' + v + ' != tag ' + tag); process.exit(1); } }"
       - run: pnpm build
       - run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
