@@ -510,6 +510,9 @@ tbody tr:hover { background: var(--row-hover); }
     font-weight: 600;
   }
   .list-card .name { flex-wrap: wrap; }
+  input[type="search"] {
+    font-size: 16px;
+  }
 }
 
 
@@ -593,6 +596,12 @@ tbody tr:hover { background: var(--row-hover); }
 }
 .foot-brand { color: inherit; text-decoration: none; opacity: .7; }
 .foot-brand:hover { opacity: 1; text-decoration: underline; }
+
+/* iOS Safari zooms the page when a focused field is under 16px */
+@media (max-width: 620px) {
+  .top-actions select { font-size: 16px; }
+  input[type="search"] { font-size: 16px; }
+}
 "#;
 
 const UPLOAD_CSS: &str = r#"
@@ -625,6 +634,10 @@ const UPLOAD_CSS: &str = r#"
 }
 .keyrow input:focus { border-color: var(--accent); }
 .up-status { min-height: 18px; }
+
+@media (max-width: 620px) {
+  .keyrow input { font-size: 16px; }
+}
 "#;
 
 const UPLOAD_JS: &str = r#"
