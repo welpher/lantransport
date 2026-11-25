@@ -589,7 +589,7 @@ elements.urls.addEventListener("click", (event) => {
 });
 elements.sponsor.addEventListener("click", (event) => {
   event.preventDefault();
-  void openUrl("https://github.com/sponsors/welpher");
+  void openUrl("https://github.com/welpher/lantransport/blob/main/SUPPORT.md");
 });
 elements.open.addEventListener("click", () => {
   const url = selectedUrlValue();

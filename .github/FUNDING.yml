@@ -1,4 +1,2 @@
-github: welpher
-# open_collective: lantransport
-# ko_fi: welpher
-# custom: ["https://your-link"]
+custom:
+  - https://github.com/welpher/lantransport/blob/main/SUPPORT.md
