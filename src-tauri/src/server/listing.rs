@@ -232,7 +232,7 @@ pub fn render(
       <tbody id="list">{rows}{empty}</tbody>
     </table>
   </div>
-  <div class="foot" id="foot">{footer}<span class="brand"> · LanTransport</span></div>
+  <div class="foot" id="foot">{footer} · <a class="brand" href="https://github.com/welpher/lantransport" target="_blank" rel="noreferrer noopener">LanTransport</a></div>
 </div>
 <script nonce="{nonce}">
 {upload_strings}
@@ -373,7 +373,8 @@ tbody tr:hover { background: var(--row-hover); }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
 .foot { margin-top: 16px; font-size: 12px; color: var(--muted); text-align: center; }
-.brand { opacity: .7; }
+.brand { color: inherit; text-decoration: none; opacity: .7; }
+.brand:hover { opacity: 1; text-decoration: underline; }
 @media (max-width: 620px) {
   body { padding: 16px 10px 36px; }
   th, td { padding: 10px; }

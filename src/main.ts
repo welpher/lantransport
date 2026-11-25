@@ -82,6 +82,7 @@ const elements = {
   trayLabel: $("tray-label"),
   tray: $<HTMLInputElement>("tray"),
   security: $("security"),
+  sponsor: $<HTMLAnchorElement>("sponsor"),
   version: $("version"),
 };
 
@@ -397,6 +398,10 @@ elements.password.addEventListener("keydown", (event) => {
 elements.urls.addEventListener("click", (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button.copy");
   if (button?.dataset.url) void flashCopy(button.dataset.url, button);
+});
+elements.sponsor.addEventListener("click", (event) => {
+  event.preventDefault();
+  void openUrl("https://github.com/sponsors/welpher");
 });
 elements.qrToggle.addEventListener("click", () => void toggleQr());
 elements.open.addEventListener("click", () => {

@@ -79,6 +79,21 @@ src-tauri/src/server/    embedded HTTP server (listing, downloads, uploads, auth
 src-tauri/src/           Tauri shell: tray, settings, commands
 ```
 
+## Sponsor
+
+LanTransport is free and MIT-licensed, with no telemetry and no account. Sponsorship
+pays for the boring parts that keep releases trustworthy:
+
+- macOS notarization and Windows code signing
+- release infrastructure and a domain for update checks
+- the occasional coffee while triaging issues
+
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-%E2%99%A5-ea4aaa?logo=github&style=flat-square)](https://github.com/sponsors/welpher)
+
+Other ways to help that cost nothing: star the repo, report bugs with your OS and
+version, translate the UI (see `docs/TRANSLATING.md`), or tell one person who
+keeps emailing themselves files.
+
 ## Roadmap
 
 See [docs/ROADMAP.md](docs/ROADMAP.md). Near-term: code signing, auto-update,
