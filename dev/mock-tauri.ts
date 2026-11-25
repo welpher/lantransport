@@ -61,7 +61,16 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   return null as T;
 }
 
-export async function listen(): Promise<() => void> {
+export async function listen<T>(
+  _event: string,
+  handler: (event: { payload: T }) => void,
+): Promise<() => void> {
+  if (params.get("rotate") === "1" && snapshot.running) {
+    window.setTimeout(() => {
+      snapshot.urls = ["http://127.0.0.1:8000", "http://10.0.0.9:8000"];
+      handler({ payload: structuredClone(snapshot) as T });
+    }, 1500);
+  }
   return () => {};
 }
 

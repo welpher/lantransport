@@ -77,6 +77,7 @@ impl ServerHandle {
         password: Option<String>,
         upload: UploadConfig,
         log: Option<PathBuf>,
+        on_urls_changed: Option<Arc<dyn Fn() + Send + Sync>>,
     ) -> Result<Self, StartError> {
         let mut mounts = Vec::new();
         for share in shares {
@@ -157,7 +158,7 @@ impl ServerHandle {
             .name("lantransport-net".into())
             .spawn(move || {
                 loop {
-                    if urls_rx.recv_timeout(Duration::from_secs(3)).is_ok() {
+                    if urls_rx.recv_timeout(Duration::from_secs(5)).is_ok() {
                         break;
                     }
                     let next = lan::urls(port, allow_lan);

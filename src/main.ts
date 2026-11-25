@@ -104,44 +104,8 @@ let qrFor: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
 
-let refreshTimer: number | null = null;
 let networkNoteTimer: number | null = null;
 let networkNote = false;
-
-function stopRefresh(): void {
-  if (refreshTimer !== null) {
-    window.clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-}
-
-function startRefresh(): void {
-  stopRefresh();
-  refreshTimer = window.setInterval(() => void refreshSnapshot(), 4000);
-}
-
-async function refreshSnapshot(): Promise<void> {
-  try {
-    const next = await invoke<Snapshot>("get_snapshot");
-    if (!next.running) {
-      stopRefresh();
-      return;
-    }
-    const changed = JSON.stringify(next.urls) !== JSON.stringify(snapshot?.urls ?? []);
-    snapshot = next;
-    if (changed) {
-      networkNote = true;
-      if (networkNoteTimer !== null) window.clearTimeout(networkNoteTimer);
-      networkNoteTimer = window.setTimeout(() => {
-        networkNote = false;
-        apply();
-      }, 8000);
-    }
-    apply();
-  } catch {
-    /* keep the last snapshot */
-  }
-}
 
 async function persistPassword(password: string | null): Promise<void> {
   try {
@@ -480,7 +444,6 @@ async function start(): Promise<void> {
     localError = String(error);
   }
   busy = false;
-  if (snapshot?.running) startRefresh();
   apply();
 }
 
@@ -490,7 +453,6 @@ async function stop(): Promise<void> {
   apply();
   try {
     snapshot = await invoke<Snapshot>("stop_sharing");
-    stopRefresh();
     networkNote = false;
     syncInputs();
   } catch (error) {
@@ -589,13 +551,23 @@ async function boot(): Promise<void> {
 
   syncInputs();
   apply();
-  if (snapshot.running) startRefresh();
 
   await listen<Snapshot>("snapshot", (event) => {
-    const wasRunning = snapshot?.running;
+    const previous = snapshot;
+    const wasRunning = previous?.running ?? false;
     snapshot = event.payload;
     if (wasRunning !== snapshot.running) {
       syncInputs();
+    }
+    const urlsChanged =
+      wasRunning && JSON.stringify(previous?.urls ?? []) !== JSON.stringify(snapshot.urls);
+    if (urlsChanged) {
+      networkNote = true;
+      if (networkNoteTimer !== null) window.clearTimeout(networkNoteTimer);
+      networkNoteTimer = window.setTimeout(() => {
+        networkNote = false;
+        apply();
+      }, 8000);
     }
     apply();
   });
