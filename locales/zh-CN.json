@@ -89,5 +89,11 @@
   "ui.add_folder": "添加文件夹",
   "ui.remove": "移除",
   "ui.inbox": "上传目录",
-  "ui.folders_hint": "上传的文件会存到第一个文件夹的 uploads/。"
+  "ui.folders_hint": "上传的文件会存到第一个文件夹的 uploads/。",
+  "ui.tab_share": "共享",
+  "ui.tab_settings": "设置",
+  "ui.group_connection": "连接",
+  "ui.group_uploads": "上传",
+  "ui.group_behavior": "行为",
+  "ui.settings_locked": "停止共享后才能修改连接设置。"
 }

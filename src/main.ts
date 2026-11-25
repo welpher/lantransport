@@ -43,6 +43,14 @@ const elements = {
   status: $("status"),
   statusText: $("status-text"),
   locale: $<HTMLSelectElement>("locale"),
+  tabShare: $<HTMLButtonElement>("tab-share"),
+  tabSettings: $<HTMLButtonElement>("tab-settings"),
+  sharePanel: $("share-panel"),
+  settingsPanel: $("settings-panel"),
+  connectionLabel: $("connection-label"),
+  uploadsGroupLabel: $("uploads-label"),
+  behaviorLabel: $("behavior-label"),
+  settingsLocked: $("settings-locked"),
   setupCard: $("setup-card"),
   foldersLabel: $("folders-label"),
   foldersHint: $("folders-hint"),
@@ -95,6 +103,7 @@ const elements = {
 
 let snapshot: Snapshot | null = null;
 let locale = "en";
+let tab: "share" | "settings" = "share";
 let busy = false;
 let localError: string | null = null;
 let qrUrl: string | null = null;
@@ -148,6 +157,12 @@ function text() {
     remove: t("ui.remove"),
     inbox: t("ui.inbox"),
     foldersHint: t("ui.folders_hint"),
+    tabShare: t("ui.tab_share"),
+    tabSettings: t("ui.tab_settings"),
+    groupConnection: t("ui.group_connection"),
+    groupUploads: t("ui.group_uploads"),
+    groupBehavior: t("ui.group_behavior"),
+    settingsLocked: t("ui.settings_locked"),
     security: t("ui.security"),
     version: t("ui.version"),
   };
@@ -222,6 +237,19 @@ function apply(): void {
   elements.locale.value = locale;
 
   elements.tagline.textContent = label.tagline;
+  elements.tabShare.textContent = label.tabShare;
+  elements.tabSettings.textContent = label.tabSettings;
+  elements.tabShare.classList.toggle("active", tab === "share");
+  elements.tabSettings.classList.toggle("active", tab === "settings");
+  elements.tabShare.setAttribute("aria-selected", String(tab === "share"));
+  elements.tabSettings.setAttribute("aria-selected", String(tab === "settings"));
+  elements.sharePanel.hidden = tab !== "share";
+  elements.settingsPanel.hidden = tab !== "settings";
+  elements.connectionLabel.textContent = label.groupConnection;
+  elements.uploadsGroupLabel.textContent = label.groupUploads;
+  elements.behaviorLabel.textContent = label.groupBehavior;
+  elements.settingsLocked.textContent = label.settingsLocked;
+  elements.settingsLocked.hidden = !running;
   elements.foldersLabel.textContent = label.folders;
   elements.foldersHint.textContent = label.foldersHint;
   elements.addFolder.textContent = label.addFolder;
@@ -493,6 +521,14 @@ async function boot(): Promise<void> {
 }
 
 elements.addFolder.addEventListener("click", () => void addFolder());
+elements.tabShare.addEventListener("click", () => {
+  tab = "share";
+  apply();
+});
+elements.tabSettings.addEventListener("click", () => {
+  tab = "settings";
+  apply();
+});
 elements.primary.addEventListener("click", () => void start());
 elements.stop.addEventListener("click", () => void stop());
 elements.password.addEventListener("keydown", (event) => {

@@ -89,5 +89,11 @@
   "ui.add_folder": "Add folder",
   "ui.remove": "Remove",
   "ui.inbox": "uploads",
-  "ui.folders_hint": "Uploads land in the first folder's uploads/."
+  "ui.folders_hint": "Uploads land in the first folder's uploads/.",
+  "ui.tab_share": "Share",
+  "ui.tab_settings": "Settings",
+  "ui.group_connection": "Connection",
+  "ui.group_uploads": "Uploads",
+  "ui.group_behavior": "Behavior",
+  "ui.settings_locked": "Stop sharing to change connection settings."
 }

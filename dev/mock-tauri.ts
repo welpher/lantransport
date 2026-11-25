@@ -1,7 +1,8 @@
 const params = new URLSearchParams(location.search);
 const running = params.get("mode") === "running";
 const uploads = params.get("uploads") === "1";
-const locale = params.get("lang") === "zh" ? "zh" : "en";
+const lang = params.get("lang") ?? "en";
+const locale = lang === "zh" || lang === "zh-CN" ? "zh-CN" : "en";
 
 const snapshot = {
   version: "0.1.0",

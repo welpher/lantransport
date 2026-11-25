@@ -79,6 +79,34 @@ select {
   cursor: pointer;
 }
 .stack { display: flex; flex-direction: column; gap: 14px; }
+.tabs {
+  display: flex;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+.tab {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+.group-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
 .card {
   background: var(--card);
   border: 1px solid var(--line);
