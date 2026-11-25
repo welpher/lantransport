@@ -5,7 +5,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 
-import { copy, type Copy, type Locale } from "./i18n";
+import { LANGUAGES, detectLocale, normalizeLocale, translate } from "./i18n";
 
 interface Settings {
   root: string | null;
@@ -87,7 +87,7 @@ const elements = {
 };
 
 let snapshot: Snapshot | null = null;
-let locale: Locale = "zh";
+let locale = "en";
 let busy = false;
 let localError: string | null = null;
 let qrUrl: string | null = null;
@@ -100,10 +100,42 @@ const draft = {
   remember: false,
 };
 
-const text = (): Copy => copy[locale];
+const t = (key: string, vars?: Record<string, string | number>): string =>
+  translate(locale, key, vars);
 
-function detectLocale(): Locale {
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+function text() {
+  return {
+    tagline: t("ui.tagline"),
+    running: t("ui.status.running"),
+    stopped: t("ui.status.stopped"),
+    starting: t("ui.status.starting"),
+    folder: t("ui.folder"),
+    choose: t("ui.choose"),
+    reveal: t("ui.reveal"),
+    noFolder: t("ui.no_folder"),
+    port: t("ui.port"),
+    lan: t("ui.lan"),
+    password: t("ui.password"),
+    passwordHint: t("ui.password_hint"),
+    remember: t("ui.remember"),
+    start: t("ui.start"),
+    stop: t("ui.stop"),
+    urls: t("ui.urls"),
+    copy: t("ui.copy"),
+    copied: t("ui.copied"),
+    qr: t("ui.qr"),
+    open: t("ui.open_browser"),
+    autoStart: t("ui.auto_start"),
+    tray: t("ui.tray"),
+    uploads: t("ui.uploads"),
+    uploadKey: t("ui.upload_key"),
+    regenerate: t("ui.regenerate"),
+    copyLink: t("ui.copy_link"),
+    maxUpload: t("ui.max_upload"),
+    uploadHint: t("ui.upload_hint"),
+    security: t("ui.security"),
+    version: t("ui.version"),
+  };
 }
 
 function syncInputs(): void {
@@ -210,7 +242,7 @@ function renderUrls(): void {
       const button = document.createElement("button");
       button.className = "btn copy";
       button.dataset.url = url;
-      button.textContent = copy[locale].copy;
+      button.textContent = t("ui.copy");
       item.append(text, button);
       return item;
     }),
@@ -226,7 +258,8 @@ function renderError(): void {
     return;
   }
   elements.error.hidden = false;
-  elements.error.textContent = text().errors[code] ?? code;
+  const message = t(`error.${code}`);
+  elements.error.textContent = message === `error.${code}` ? code : message;
 }
 
 async function start(): Promise<void> {
@@ -355,7 +388,7 @@ async function toggleQr(): Promise<void> {
 async function boot(): Promise<void> {
   snapshot = await invoke<Snapshot>("get_snapshot");
   const stored = snapshot.settings.locale;
-  locale = stored === "zh" || stored === "en" ? stored : detectLocale();
+  locale = stored === "auto" ? detectLocale() : normalizeLocale(stored);
   draft.root = snapshot.settings.root;
   draft.port = snapshot.settings.port;
   draft.allowLan = snapshot.settings.allow_lan;
@@ -365,6 +398,15 @@ async function boot(): Promise<void> {
   if (stored !== locale) {
     snapshot = await invoke<Snapshot>("update_prefs", { locale });
   }
+
+  elements.locale.replaceChildren(
+    ...LANGUAGES.map((language) => {
+      const option = document.createElement("option");
+      option.value = language.code;
+      option.textContent = language.name;
+      return option;
+    }),
+  );
 
   syncInputs();
   apply();
@@ -378,7 +420,7 @@ async function boot(): Promise<void> {
     apply();
   });
   elements.locale.addEventListener("change", () => {
-    locale = elements.locale.value === "en" ? "en" : "zh";
+    locale = normalizeLocale(elements.locale.value);
     void updatePrefs({ locale });
   });
 }

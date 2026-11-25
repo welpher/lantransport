@@ -1,8 +1,6 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::atomic::AtomicU8;
 use std::time::Duration;
 
 use lantransport_lib::server::ServerHandle;
@@ -38,7 +36,6 @@ fn start_with_upload(root: &Path, password: Option<&str>, upload: UploadConfig) 
         false,
         password.map(str::to_string),
         upload,
-        Arc::new(AtomicU8::new(0)),
     )
     .expect("server starts")
 }
@@ -207,6 +204,21 @@ fn password_auth_and_throttle() {
 fn base64(raw: &str) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(raw)
+}
+
+#[test]
+fn localizes_pages_per_visitor() {
+    let root = temp_root("i18n");
+    let server = start(&root, None);
+    let zh = send(
+        server.port,
+        "GET / HTTP/1.1\r\nHost: test\r\nAccept-Language: zh-CN,zh;q=0.9\r\nConnection: close\r\n\r\n",
+    );
+    assert!(zh.text().contains("<html lang=\"zh-CN\">"));
+    assert!(zh.text().contains("名称"));
+    let en = get(server.port, "/?lang=en");
+    assert!(en.text().contains("Name"));
+    assert!(en.text().contains("<html lang=\"en\">"));
 }
 
 #[test]

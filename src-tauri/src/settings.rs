@@ -45,10 +45,16 @@ impl Settings {
 
     pub fn load(app: &AppHandle) -> Self {
         let Some(path) = Self::file(app) else { return Self::default() };
-        fs::read_to_string(path)
+        let mut settings: Self = fs::read_to_string(path)
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if settings.locale != "auto" {
+            settings.locale = crate::server::i18n::normalize(&settings.locale)
+                .unwrap_or("en")
+                .to_string();
+        }
+        settings
     }
 
     pub fn save(&self, app: &AppHandle) -> Result<(), String> {

@@ -1,52 +1,45 @@
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-use crate::server::{Lang, ServerHandle};
+use crate::server::i18n;
+use crate::server::ServerHandle;
 use crate::settings::Settings;
-
-pub const LANG_ZH: u8 = 0;
-pub const LANG_EN: u8 = 1;
-pub const LANG_AUTO: u8 = 2;
 
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub server: Mutex<Option<ServerHandle>>,
-    pub lang: Arc<AtomicU8>,
     pub last_error: Mutex<Option<String>>,
     pub shutting_down: Mutex<bool>,
 }
 
 impl AppState {
     pub fn new(app: &AppHandle) -> Self {
-        let settings = Settings::load(app);
-        let lang = Arc::new(AtomicU8::new(locale_to_u8(&settings.locale)));
         Self {
-            settings: Mutex::new(settings),
+            settings: Mutex::new(Settings::load(app)),
             server: Mutex::new(None),
-            lang,
             last_error: Mutex::new(None),
             shutting_down: Mutex::new(false),
         }
     }
 
-    pub fn lang_value(&self) -> Lang {
-        match self.lang.load(Ordering::Relaxed) {
-            LANG_EN => Lang::En,
-            LANG_AUTO => Lang::Zh,
-            _ => Lang::Zh,
+    pub fn ui_locale(&self) -> String {
+        let locale = self
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .locale
+            .clone();
+        if locale == "auto" {
+            std::env::var("LANG")
+                .ok()
+                .and_then(|value| i18n::normalize(&value))
+                .unwrap_or("en")
+                .to_string()
+        } else {
+            i18n::normalize(&locale).unwrap_or("en").to_string()
         }
-    }
-}
-
-pub fn locale_to_u8(locale: &str) -> u8 {
-    match locale {
-        "en" => LANG_EN,
-        "zh" => LANG_ZH,
-        _ => LANG_AUTO,
     }
 }
 

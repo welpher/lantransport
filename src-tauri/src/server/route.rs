@@ -11,10 +11,10 @@ use percent_encoding::percent_decode_str;
 
 use super::http::{
     Method, RangeOutcome, Request, Response, content_disposition, escape_html, http_date,
-    parse_range,
+    parse_range, split_target,
 };
 use super::listing::{self, Entry};
-use super::{Lang, ServerContext, paths};
+use super::{ServerContext, i18n, paths};
 
 pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response {
     if let Method::Other(_) = &request.method {
@@ -23,10 +23,11 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
             .header("Content-Type", "text/plain; charset=utf-8");
     }
 
+    let locale = i18n::from_request(request);
     let (raw_path, raw_query) = split_target(&request.target);
     let decoded = percent_decode_str(raw_path).decode_utf8_lossy().into_owned();
     if decoded.contains('\0') {
-        return simple(400, lang(ctx));
+        return simple(400, locale);
     }
 
     if decoded == "/favicon.ico" {
@@ -35,22 +36,22 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
 
     if ctx.auth.required() {
         if let Some(seconds) = ctx.limiter.blocked_for(peer) {
-            return simple(429, lang(ctx)).header("Retry-After", seconds.to_string());
+            return simple(429, locale).header("Retry-After", seconds.to_string());
         }
         if !ctx.auth.check(request.header("authorization")) {
             ctx.limiter.note_failure(peer);
-            return Response::html(401, login_page(lang(ctx)))
+            return Response::html(401, login_page(locale))
                 .header("WWW-Authenticate", "Basic realm=\"LanTransport\", charset=\"UTF-8\"");
         }
         ctx.limiter.note_success(peer);
     }
 
     let Some(target) = paths::resolve(&ctx.root, &decoded) else {
-        return simple(404, lang(ctx));
+        return simple(404, locale);
     };
 
     let Ok(metadata) = fs::metadata(&target) else {
-        return simple(404, lang(ctx));
+        return simple(404, locale);
     };
 
     if metadata.is_dir() {
@@ -67,33 +68,18 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
             .read()
             .map(|config| config.enabled && !config.key.is_empty())
             .unwrap_or(false);
-        serve_listing(&target, &decoded, lang(ctx), uploads)
+        serve_listing(&target, &decoded, locale, uploads)
     } else if metadata.is_file() {
-        serve_file(&target, &metadata, raw_query.contains("download"), request, lang(ctx))
+        serve_file(&target, &metadata, raw_query.contains("download"), request, locale)
     } else {
-        simple(404, lang(ctx))
+        simple(404, locale)
     }
 }
 
-fn split_target(target: &str) -> (&str, &str) {
-    let target = match target
-        .strip_prefix("http://")
-        .or_else(|| target.strip_prefix("https://"))
-    {
-        Some(rest) => rest.find('/').map_or("/", |index| &rest[index..]),
-        None => target,
-    };
-    target.split_once('?').unwrap_or((target, ""))
-}
-
-fn lang(ctx: &ServerContext) -> Lang {
-    Lang::from_u8(ctx.lang.load(Ordering::Relaxed))
-}
-
-fn serve_listing(dir: &Path, url_path: &str, lang: Lang, uploads: bool) -> Response {
+fn serve_listing(dir: &Path, url_path: &str, locale: &str, uploads: bool) -> Response {
     let read = match fs::read_dir(dir) {
         Ok(read) => read,
-        Err(_) => return simple(403, lang),
+        Err(_) => return simple(403, locale),
     };
 
     let mut entries = Vec::new();
@@ -124,7 +110,7 @@ fn serve_listing(dir: &Path, url_path: &str, lang: Lang, uploads: bool) -> Respo
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| dir.display().to_string());
     let nonce = nonce();
-    let page = listing::render(&dir_name, url_path, &entries, total_size, lang, &nonce, uploads);
+    let page = listing::render(&dir_name, url_path, &entries, total_size, locale, &nonce, uploads);
     Response::html(200, page)
         .header("Cache-Control", "no-store")
         .header(
@@ -142,7 +128,7 @@ fn serve_file(
     metadata: &fs::Metadata,
     as_attachment: bool,
     request: &Request,
-    lang: Lang,
+    locale: &str,
 ) -> Response {
     let size = metadata.len();
     let modified = metadata.modified().ok();
@@ -167,7 +153,7 @@ fn serve_file(
             return Response::empty(416).header("Content-Range", format!("bytes */{size}"))
         }
         RangeOutcome::Partial { start, end } => {
-            let Ok(file) = File::open(path) else { return simple(404, lang) };
+            let Ok(file) = File::open(path) else { return simple(404, locale) };
             let length = end - start + 1;
             Response::file(206, file, start, length).header(
                 "Content-Range",
@@ -175,7 +161,7 @@ fn serve_file(
             )
         }
         RangeOutcome::Full => {
-            let Ok(file) = File::open(path) else { return simple(404, lang) };
+            let Ok(file) = File::open(path) else { return simple(404, locale) };
             Response::file(200, file, 0, size)
         }
     };
@@ -218,30 +204,25 @@ fn content_type_for(path: &Path) -> String {
     }
 }
 
-fn simple(status: u16, lang: Lang) -> Response {
-    let (title, message) = match status {
-        400 => ("400", if lang == Lang::Zh { "请求格式不正确。" } else { "Malformed request." }),
-        403 => ("403", if lang == Lang::Zh { "无法读取目录。" } else { "Cannot read folder." }),
-        404 => ("404", if lang == Lang::Zh { "没有这个文件或目录。" } else { "No such file or folder." }),
-        429 => ("429", if lang == Lang::Zh { "尝试次数过多，请稍后再试。" } else { "Too many attempts. Try again later." }),
-        500 => ("500", if lang == Lang::Zh { "服务器内部错误。" } else { "Internal error." }),
-        _ => ("Error", "Error"),
+fn simple(status: u16, locale: &str) -> Response {
+    let key = match status {
+        400 | 403 | 404 | 429 | 500 => format!("error.{status}"),
+        _ => "error.500".to_string(),
     };
+    let message = i18n::t(locale, &key);
     let page = format!(
-        "<!doctype html><html><meta charset=\"utf-8\"><meta name=\"color-scheme\" content=\"dark light\"><title>{title}</title><body style=\"font:15px system-ui;padding:40px\"><h2>{title}</h2><p>{message}</p></body></html>"
+        "<!doctype html><html lang=\"{}\"><meta charset=\"utf-8\"><meta name=\"color-scheme\" content=\"dark light\"><title>{status}</title><body style=\"font:15px system-ui;padding:40px\"><h2>{status}</h2><p>{message}</p></body></html>",
+        escape_html(locale),
+        message = escape_html(&message)
     );
     Response::html(status, page)
 }
 
-fn login_page(lang: Lang) -> String {
-    let hint = if lang == Lang::Zh {
-        "需要访问口令。用户名固定为 share。"
-    } else {
-        "Password required. The username is always share."
-    };
+fn login_page(locale: &str) -> String {
     format!(
-        "<!doctype html><html><meta charset=\"utf-8\"><title>401</title><body style=\"font:15px system-ui;padding:40px\"><h2>401</h2><p>{}</p></body></html>",
-        escape_html(hint)
+        "<!doctype html><html lang=\"{}\"><meta charset=\"utf-8\"><title>401</title><body style=\"font:15px system-ui;padding:40px\"><h2>401</h2><p>{}</p></body></html>",
+        escape_html(locale),
+        escape_html(&i18n::t(locale, "auth.hint"))
     )
 }
 

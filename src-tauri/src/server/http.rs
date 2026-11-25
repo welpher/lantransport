@@ -319,6 +319,43 @@ pub fn parse_range(header: Option<&str>, size: u64) -> RangeOutcome {
     RangeOutcome::Partial { start, end }
 }
 
+pub fn split_target(target: &str) -> (&str, &str) {
+    let target = match target
+        .strip_prefix("http://")
+        .or_else(|| target.strip_prefix("https://"))
+    {
+        Some(rest) => rest.find('/').map_or("/", |index| &rest[index..]),
+        None => target,
+    };
+    target.split_once('?').unwrap_or((target, ""))
+}
+
+fn decode_query(value: &str) -> String {
+    let value = value.replace('+', " ");
+    percent_encoding::percent_decode_str(&value)
+        .decode_utf8_lossy()
+        .into_owned()
+}
+
+pub fn query_pairs(query: &str) -> Vec<(String, String)> {
+    query
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+            (decode_query(name), decode_query(value))
+        })
+        .collect()
+}
+
+pub fn query_param(target: &str, name: &str) -> Option<String> {
+    let (_, query) = split_target(target);
+    query_pairs(query)
+        .into_iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value)
+}
+
 pub fn escape_html(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for ch in input.chars() {

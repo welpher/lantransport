@@ -1,39 +1,44 @@
 # Translating LanTransport
 
-The UI ships in English and Chinese today. We want more, and the plan is to use
-[Weblate](https://weblate.org) once the repository is public (hosted Weblate is
-free for libre projects).
+The catalogs live in [`locales/`](../locales). English is the base language; every
+other file must have the same keys and the same `{placeholders}`.
 
 ## Current state
 
-Strings live in two places while the catalogs are being extracted:
+`locales/en.json` and `locales/zh-CN.json` are the single source of truth. The Rust
+server embeds them at compile time (`include_str!`), and the desktop UI imports the
+same files, so a translation fixes both surfaces at once.
 
-- `src/i18n.ts` — desktop UI
-- `src-tauri/src/server/listing.rs` — the web page served to visitors
+The web page picks a language per visitor: `?lang=` → `lt_lang` cookie →
+`Accept-Language` → English. The desktop app follows the system language and can be
+overridden in the app.
 
-## How to add a language today
+## Adding a language by hand
 
-1. Copy the strings for one locale and translate them.
-2. Keep placeholders (`{n}`) and product names (`LanTransport`) unchanged.
-3. Open a PR with the locale code (BCP 47, e.g. `pt-BR`).
+1. Copy `locales/en.json` to `locales/<code>.json` using a BCP 47 code (`pt-BR`, `ja`).
+2. Translate the values, keep the keys untouched.
+3. Keep placeholders (`{n}`, `{size}`) and product names (`LanTransport`) unchanged.
+4. Add the language to `LANGUAGES` in two places:
+   - `src-tauri/src/server/i18n.rs`
+   - `src/i18n.ts`
+5. Run `pnpm i18n:check` and open a PR.
 
-## Planned structure
+## Weblate
 
-```
-locales/
-  en.json       # base language
-  zh-CN.json
-  ...
-```
+Once the repository is public, hosted Weblate (free for libre projects) can take
+over the workflow:
 
-- Flat keys, ICU plurals: `{"items.count": "{n} items"}`
-- One catalog used by both the Rust server (`include_str!`) and the TypeScript UI
-- Web page language: `Accept-Language` + a switcher, remembered in `localStorage`
-- Desktop language: follows the system by default, overridable in the app
+1. Create the project at <https://hosted.weblate.org> and add a component.
+2. Source: this GitHub repository.
+3. File mask: `locales/*.json`
+4. Base file: `locales/en.json`
+5. File format: **JSON file (i18next)**, monolingual.
+
+Weblate then opens pull requests with translated catalogs. CI runs
+`pnpm i18n:check` on every PR, so key and placeholder mismatches fail fast.
 
 ## Rules
 
 - Never translate `LanTransport`, `share` (the Basic auth username), or file names.
 - Keep sentences short; the web page is used on phones.
-- Don't add HTML to strings.
-- If a screenshot helps, include one in the PR.
+- Don't put HTML in strings.

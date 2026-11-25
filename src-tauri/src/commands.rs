@@ -1,12 +1,11 @@
 use std::path::Path;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::server::upload::UploadConfig;
 use crate::server::{ServerHandle, StartError};
-use crate::state::{self, AppState, Snapshot, locale_to_u8};
+use crate::server::i18n;
+use crate::state::{self, AppState, Snapshot};
 use crate::tray;
 
 pub fn notify(app: &AppHandle) {
@@ -75,7 +74,6 @@ fn start_server(
         allow_lan,
         password,
         upload,
-        Arc::clone(&state.lang),
     )
     .map_err(|error| error_code(&error))?;
 
@@ -180,7 +178,11 @@ pub fn update_prefs(
     let settings = {
         let mut settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
         if let Some(locale) = locale {
-            settings.locale = locale;
+            settings.locale = if locale == "auto" {
+                "auto".into()
+            } else {
+                i18n::normalize(&locale).unwrap_or("en").to_string()
+            };
         }
         if let Some(auto_start) = auto_start {
             settings.auto_start = auto_start;
@@ -190,9 +192,6 @@ pub fn update_prefs(
         }
         settings.clone()
     };
-    state
-        .lang
-        .store(locale_to_u8(&settings.locale), Ordering::Relaxed);
     let _ = settings.save(&app);
     notify(&app);
     Ok(state::snapshot(&app))

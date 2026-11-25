@@ -6,10 +6,8 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use percent_encoding::percent_decode_str;
-
-use super::http::{Request, Response, escape_html};
-use super::{Lang, ServerContext, paths};
+use super::http::{Request, Response, escape_html, query_pairs, query_param, split_target};
+use super::{ServerContext, i18n, paths};
 
 #[derive(Clone, Debug)]
 pub struct UploadConfig {
@@ -30,14 +28,14 @@ pub fn handle<R: BufRead>(
     ctx: &ServerContext,
     peer: IpAddr,
 ) -> Response {
-    let lang = Lang::from_u8(ctx.lang.load(Ordering::Relaxed));
+    let locale = i18n::from_request(request);
     let config = ctx.upload.read().unwrap_or_else(|error| error.into_inner()).clone();
     if !config.enabled || config.key.is_empty() {
-        return fail(403, lang, "uploads are disabled");
+        return fail(403, locale, "upload.err.disabled");
     }
 
     if let Some(seconds) = ctx.upload_limiter.blocked_for(peer) {
-        return fail(429, lang, "too many attempts").header("Retry-After", seconds.to_string());
+        return fail(429, locale, "upload.err.too_many").header("Retry-After", seconds.to_string());
     }
 
     let supplied = request
@@ -47,12 +45,12 @@ pub fn handle<R: BufRead>(
     let allowed = supplied.is_some_and(|key| constant_time_eq(key.as_bytes(), config.key.as_bytes()));
     if !allowed {
         ctx.upload_limiter.note_failure(peer);
-        return fail(403, lang, "wrong upload key");
+        return fail(403, locale, "upload.err.wrong_key");
     }
     ctx.upload_limiter.note_success(peer);
 
     let (_, raw_query) = split_target(&request.target);
-    let query = parse_query(raw_query);
+    let query = query_pairs(raw_query);
     let dir_path = query
         .iter()
         .find(|(name, _)| name == "dir")
@@ -63,55 +61,55 @@ pub fn handle<R: BufRead>(
         .map(|(_, value)| value.as_str())
         .and_then(safe_file_name)
     else {
-        return fail(400, lang, "invalid file name");
+        return fail(400, locale, "upload.err.bad_name");
     };
 
     let Some(directory) = paths::resolve(&ctx.root, dir_path) else {
-        return fail(404, lang, "no such folder");
+        return fail(404, locale, "upload.err.no_folder");
     };
     if !directory.is_dir() {
-        return fail(404, lang, "no such folder");
+        return fail(404, locale, "upload.err.no_folder");
     }
 
     if request.header("transfer-encoding").is_some() {
-        return fail(411, lang, "content-length required");
+        return fail(411, locale, "upload.err.length");
     }
     let Some(length) = request
         .header("content-length")
         .and_then(|value| value.parse::<u64>().ok())
     else {
-        return fail(411, lang, "content-length required");
+        return fail(411, locale, "upload.err.length");
     };
     if length == 0 {
-        return fail(400, lang, "empty file");
+        return fail(400, locale, "upload.err.empty");
     }
     if length > config.max_bytes {
-        return fail(413, lang, "file too large");
+        return fail(413, locale, "upload.err.too_large");
     }
 
     let target = unique_target(&directory, &name);
     let temp = temp_path(&directory);
     let mut file = match File::create_new(&temp) {
         Ok(file) => file,
-        Err(_) => return fail(500, lang, "cannot write file"),
+        Err(_) => return fail(500, locale, "upload.err.write"),
     };
 
     let result = copy_body(reader, &mut file, length);
     if result.is_err() {
         drop(file);
         let _ = fs::remove_file(&temp);
-        return fail(500, lang, "upload interrupted");
+        return fail(500, locale, "upload.err.interrupted");
     }
     if file.sync_all().is_err() {
         drop(file);
         let _ = fs::remove_file(&temp);
-        return fail(500, lang, "cannot write file");
+        return fail(500, locale, "upload.err.write");
     }
     drop(file);
 
     if fs::rename(&temp, &target).is_err() {
         let _ = fs::remove_file(&temp);
-        return fail(500, lang, "cannot write file");
+        return fail(500, locale, "upload.err.write");
     }
 
     let saved = target
@@ -203,43 +201,7 @@ fn temp_path(directory: &Path) -> PathBuf {
     ))
 }
 
-fn split_target(target: &str) -> (&str, &str) {
-    let target = match target.strip_prefix("http://").or_else(|| target.strip_prefix("https://")) {
-        Some(rest) => rest.find('/').map_or("/", |index| &rest[index..]),
-        None => target,
-    };
-    target.split_once('?').unwrap_or((target, ""))
-}
-
-pub fn split_path(target: &str) -> &str {
-    split_target(target).0
-}
-
-fn query_param(target: &str, wanted: &str) -> Option<String> {
-    let (_, query) = split_target(target);
-    parse_query(query)
-        .into_iter()
-        .find(|(name, _)| name == wanted)
-        .map(|(_, value)| value)
-}
-
-fn parse_query(query: &str) -> Vec<(String, String)> {
-    query
-        .split('&')
-        .filter(|pair| !pair.is_empty())
-        .map(|pair| {
-            let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-            (decode(name), decode(value))
-        })
-        .collect()
-}
-
-fn decode(value: &str) -> String {
-    let value = value.replace('+', " ");
-    percent_decode_str(&value).decode_utf8_lossy().into_owned()
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -250,20 +212,12 @@ fn serde_json_string(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
 }
 
-fn fail(status: u16, lang: Lang, message: &str) -> Response {
-    let text = match lang {
-        Lang::Zh => match status {
-            403 => "上传未开启，或 key 不正确。",
-            404 => "目标文件夹不存在。",
-            413 => "文件超过大小限制。",
-            429 => "尝试次数过多，请稍后再试。",
-            _ => "上传失败。",
-        },
-        Lang::En => message,
-    };
+fn fail(status: u16, locale: &str, key: &str) -> Response {
+    let message = i18n::t(locale, key);
     let body = format!(
-        "<!doctype html><html><meta charset=\"utf-8\"><title>Upload</title><body style=\"font:15px system-ui;padding:40px\"><h2>{status}</h2><p>{}</p></body></html>",
-        escape_html(text)
+        "<!doctype html><html lang=\"{}\"><meta charset=\"utf-8\"><title>Upload</title><body style=\"font:15px system-ui;padding:40px\"><h2>{status}</h2><p>{}</p></body></html>",
+        escape_html(locale),
+        escape_html(&message)
     );
     Response::html(status, body).header("Cache-Control", "no-store")
 }
@@ -286,7 +240,7 @@ mod tests {
 
     #[test]
     fn parses_query() {
-        let values = parse_query("dir=%2Fsub%2F&name=a+b.txt&key=x");
+        let values = query_pairs("dir=%2Fsub%2F&name=a+b.txt&key=x");
         assert_eq!(values[0], ("dir".into(), "/sub/".into()));
         assert_eq!(values[1], ("name".into(), "a b.txt".into()));
         assert_eq!(values[2], ("key".into(), "x".into()));

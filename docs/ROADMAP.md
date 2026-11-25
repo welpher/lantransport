@@ -7,6 +7,8 @@
 - [x] Key-gated uploads with size limit
 - [x] Tray, autostart on launch, minimize to tray
 - [x] zh / en UI, light / dark
+- [x] locale catalogs shared by desktop app and web page
+- [x] per-visitor language on the web page (Accept-Language + switcher)
 
 ## Next
 
@@ -17,6 +19,7 @@
 - [ ] QR code for upload links (currently browse link)
 - [ ] mDNS name (`lantransport.local`) so nobody has to type an IP
 - [ ] Clipboard channel (text + images) between devices
+- [ ] Connect hosted Weblate and open translation PRs
 
 ## Later
 

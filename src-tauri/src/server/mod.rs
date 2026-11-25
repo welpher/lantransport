@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod http;
+pub mod i18n;
 pub mod lan;
 pub mod listing;
 pub mod paths;
@@ -11,7 +12,7 @@ pub mod upload;
 use std::io::{BufReader, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
@@ -22,26 +23,12 @@ use crate::server::upload::UploadConfig;
 const MAX_CONNECTIONS: usize = 64;
 const MAX_REQUESTS_PER_CONNECTION: usize = 100;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Lang {
-    Zh,
-    En,
-}
-
-impl Lang {
-    pub fn from_u8(value: u8) -> Self {
-        if value == 1 { Lang::En } else { Lang::Zh }
-    }
-
-}
-
 pub struct ServerContext {
     pub root: PathBuf,
     pub auth: auth::Auth,
     pub limiter: auth::AuthLimiter,
     pub upload: RwLock<UploadConfig>,
     pub upload_limiter: auth::AuthLimiter,
-    pub lang: Arc<AtomicU8>,
 }
 
 pub struct ServerHandle {
@@ -79,7 +66,6 @@ impl ServerHandle {
         allow_lan: bool,
         password: Option<String>,
         upload: UploadConfig,
-        lang: Arc<AtomicU8>,
     ) -> Result<Self, StartError> {
         let root = std::fs::canonicalize(root).map_err(|_| StartError::InvalidRoot)?;
         if !root.is_dir() {
@@ -106,7 +92,6 @@ impl ServerHandle {
             limiter: auth::AuthLimiter::default(),
             upload: RwLock::new(upload),
             upload_limiter: auth::AuthLimiter::default(),
-            lang,
         });
         let context_for_handle = Arc::clone(&context);
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -211,7 +196,7 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
                         let _ = stream.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
                         let _ = stream.flush();
                     }
-                    let mut response = if upload::split_path(&request.target) == "/upload" {
+                    let mut response = if http::split_target(&request.target).0 == "/upload" {
                         upload::handle(&mut reader, &request, &context, peer)
                     } else {
                         http::Response::empty(405).header("Allow", "GET, HEAD, PUT")

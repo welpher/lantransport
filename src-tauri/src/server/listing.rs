@@ -2,83 +2,14 @@
 
 use chrono::{DateTime, Local};
 
-use super::Lang;
 use super::http::{encode_segment, escape_html};
+use super::i18n;
 
 pub struct Entry {
     pub name: String,
     pub is_dir: bool,
     pub size: u64,
     pub modified: Option<DateTime<Local>>,
-}
-
-struct Texts {
-    root: &'static str,
-    item_count: &'static str,
-    total_files: &'static str,
-    search: &'static str,
-    name: &'static str,
-    size: &'static str,
-    modified: &'static str,
-    download: &'static str,
-    empty: &'static str,
-    footer: &'static str,
-    filtered: &'static str,
-    upload_title: &'static str,
-    upload_hint: &'static str,
-    upload_choose: &'static str,
-    upload_save: &'static str,
-    upload_need_key: &'static str,
-    upload_failed: &'static str,
-    upload_done: &'static str,
-    upload_key: &'static str,
-}
-
-fn texts(lang: Lang) -> Texts {
-    match lang {
-        Lang::Zh => Texts {
-            root: "根目录",
-            item_count: "个项目",
-            total_files: "文件共",
-            search: "按文件名筛选…",
-            name: "名称",
-            size: "大小",
-            modified: "修改时间",
-            download: "下载",
-            empty: "这个目录是空的。",
-            footer: "只读共享 · 点文件名预览，点「下载」另存为",
-            filtered: "筛选出 {n} 个项目",
-            upload_title: "上传文件",
-            upload_hint: "需要上传 key · 也可以把文件拖进来",
-            upload_choose: "选择文件",
-            upload_save: "记住",
-            upload_need_key: "先填写上传 key",
-            upload_failed: "有文件上传失败",
-            upload_done: "上传完成，正在刷新…",
-            upload_key: "上传 key",
-        },
-        Lang::En => Texts {
-            root: "Home",
-            item_count: "items",
-            total_files: "files",
-            search: "Filter by name…",
-            name: "Name",
-            size: "Size",
-            modified: "Modified",
-            download: "Download",
-            empty: "This folder is empty.",
-            footer: "Read-only share · open a name to preview, Download to save",
-            filtered: "{n} items match",
-            upload_title: "Upload files",
-            upload_hint: "Upload key required · you can also drop files here",
-            upload_choose: "Choose files",
-            upload_save: "Remember",
-            upload_need_key: "Enter the upload key first",
-            upload_failed: "Some uploads failed",
-            upload_done: "Uploaded. Refreshing…",
-            upload_key: "Upload key",
-        },
-    }
 }
 
 pub fn human_size(n: u64) -> String {
@@ -112,14 +43,13 @@ pub fn render(
     url_path: &str,
     entries: &[Entry],
     total_size: u64,
-    lang: Lang,
+    locale: &str,
     nonce: &str,
     uploads: bool,
 ) -> String {
-    let t = texts(lang);
-    let html_lang = match lang {
-        Lang::Zh => "zh-CN",
-        Lang::En => "en",
+    let t = |key: &str| i18n::t(locale, key);
+    let t1 = |key: &str, value: String| {
+        i18n::t_args(locale, key, &[("n", value.clone()), ("size", value)])
     };
 
     let mut rows = String::new();
@@ -161,11 +91,11 @@ pub fn render(
             human_size(entry.size),
             modified,
             href,
-            t.download
+            t("page.download")
         ));
     }
 
-    let mut crumbs = format!("<a href='/'>{}</a>", t.root);
+    let mut crumbs = format!("<a href='/'>{}</a>", t("page.home"));
     let mut walk = String::new();
     for part in url_path.split('/').filter(|part| !part.is_empty()) {
         walk.push('/');
@@ -187,30 +117,45 @@ pub fn render(
   </div>
   <div class="up-status hint" id="up-status"></div>
 </div>"#,
-            title = t.upload_title,
-            hint = t.upload_hint,
-            choose = t.upload_choose,
-            save = t.upload_save,
-            key = t.upload_key,
+            title = escape_html(&t("upload.title")),
+            hint = escape_html(&t("upload.hint")),
+            choose = escape_html(&t("upload.choose")),
+            save = escape_html(&t("upload.save")),
+            key = escape_html(&t("upload.key")),
         )
     } else {
         String::new()
     };
+
     let upload_strings = format!(
         "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {} }};",
-        js_string(t.upload_need_key),
-        js_string(t.upload_failed),
-        js_string(t.upload_done),
-        js_string(if lang == Lang::Zh { "上传中" } else { "Uploading" }),
+        js_string(&t("upload.need_key")),
+        js_string(&t("upload.failed")),
+        js_string(&t("upload.done")),
+        js_string(&t("upload.uploading")),
     );
 
+    let lang_options: String = i18n::LANGUAGES
+        .iter()
+        .map(|(code, name)| {
+            format!(
+                "<option value='{}'{}>{}</option>",
+                escape_html(code),
+                if *code == locale { " selected" } else { "" },
+                escape_html(name)
+            )
+        })
+        .collect();
+
     let empty = if entries.is_empty() {
-        format!("<tr><td colspan='4' class='empty'>{}</td></tr>", t.empty)
+        format!("<tr><td colspan='4' class='empty'>{}</td></tr>", t("page.empty"))
     } else {
         String::new()
     };
-    let count = entries.len();
-    let filtered = t.filtered.replace('\'', "\\'");
+    let filtered = t("page.filtered").replace('\'', "\\'");
+    let items = t1("page.items", entries.len().to_string());
+    let total = t1("page.total", human_size(total_size));
+    let footer_key = if uploads { "page.footer_uploads" } else { "page.footer" };
 
     format!(
         r#"<!doctype html>
@@ -221,8 +166,11 @@ pub fn render(
 <title>{title} · LanTransport</title>
 <style>{STYLE}{UPLOAD_CSS}</style>
 <div class="wrap">
-  <h1>{title}</h1>
-  <div class="meta">{count} {item_count} · {total_files} {total}</div>
+  <div class="top">
+    <h1>{title}</h1>
+    <select id="lang" aria-label="{lang_label}">{lang_options}</select>
+  </div>
+  <div class="meta">{items} · {total}</div>
   <div class="crumbs">{crumbs}</div>
   <div class="bar"><input type="search" id="q" placeholder="{search}" autocomplete="off"></div>
   {upload_panel}
@@ -254,29 +202,35 @@ q.addEventListener('input', () => {{
 q.addEventListener('keydown', event => {{
   if (event.key === 'Escape') {{ q.value = ''; q.dispatchEvent(new Event('input')); }}
 }});
+const lang = document.getElementById('lang');
+if (lang) {{
+  if (new URLSearchParams(location.search).get('lang')) {{
+    document.cookie = 'lt_lang=' + lang.value + '; Path=/; Max-Age=31536000; SameSite=Lax';
+  }}
+  lang.addEventListener('change', () => {{
+    document.cookie = 'lt_lang=' + lang.value + '; Path=/; Max-Age=31536000; SameSite=Lax';
+    const url = new URL(location.href);
+    url.searchParams.set('lang', lang.value);
+    location.href = url.toString();
+  }});
+}}
 </script>
 <script nonce="{nonce}">{UPLOAD_JS}</script>
 "#,
+        html_lang = escape_html(locale),
         title = escape_html(dir_name),
-        count = count,
-        item_count = t.item_count,
-        total_files = t.total_files,
-        total = human_size(total_size),
+        lang_label = escape_html(&t("page.language")),
+        lang_options = lang_options,
+        items = escape_html(&items),
+        total = escape_html(&total),
         crumbs = crumbs,
-        search = t.search,
-        name = t.name,
-        size = t.size,
-        modified = t.modified,
+        search = escape_html(&t("page.search")),
+        name = escape_html(&t("page.col.name")),
+        size = escape_html(&t("page.col.size")),
+        modified = escape_html(&t("page.col.modified")),
         rows = rows,
         empty = empty,
-        footer = escape_html(if uploads {
-            match lang {
-                Lang::Zh => "只读浏览 · 点文件名预览，点「下载」另存为 · 拿到 key 的人可以上传",
-                Lang::En => "Read-only browse · open a name to preview, Download to save · key holders can upload",
-            }
-        } else {
-            t.footer
-        }),
+        footer = escape_html(&t(footer_key)),
         filtered = filtered,
         nonce = escape_html(nonce),
         upload_panel = upload_panel,
@@ -285,6 +239,10 @@ q.addEventListener('keydown', event => {{
         UPLOAD_CSS = UPLOAD_CSS,
         UPLOAD_JS = UPLOAD_JS,
     )
+}
+
+fn js_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
 }
 
 pub const STYLE: &str = r#"
@@ -382,10 +340,6 @@ tbody tr:hover { background: var(--row-hover); }
   .size { font-size: 12px; }
 }
 "#;
-
-fn js_string(value: &str) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
-}
 
 const UPLOAD_CSS: &str = r#"
 .upload { gap: 10px; }
@@ -486,7 +440,7 @@ mod tests {
             size: 1,
             modified: None,
         }];
-        let page = render("x", "/", &entries, 1, Lang::En, "abc", false);
+        let page = render("x", "/", &entries, 1, "en", "abc", false);
         assert!(!page.contains("<script>.txt"));
         assert!(page.contains("&lt;script&gt;.txt"));
     }

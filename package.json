@@ -11,7 +11,8 @@
     "icons": "node scripts/make-icons.mjs && tauri icon assets/icon.png",
     "check": "tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "preview:ui": "vite --config dev/preview.config.ts"
+    "preview:ui": "vite --config dev/preview.config.ts",
+    "i18n:check": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

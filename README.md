@@ -32,7 +32,7 @@ No account, no cloud, no relay: the files never leave your network.
 - **QR code** for the LAN link, one click to copy
 - **Tray app**: keeps sharing while the window is closed; start/stop from the tray
 - **Cross-platform**: macOS (Intel & Apple Silicon), Windows, Linux
-- Light/dark follows the system, UI in English and 中文
+- Light/dark follows the system; English and 中文 today, more via [Weblate](docs/TRANSLATING.md)
 - Small installers: the app uses the system webview instead of bundling a browser
 
 ## Install
@@ -69,12 +69,14 @@ pnpm tauri build        # installers in src-tauri/target/release/bundle
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm icons              # regenerate app/tray icons from assets/*.svg
 pnpm preview:ui         # UI only, mocked IPC → http://localhost:1421/?mode=running&uploads=1
+pnpm i18n:check         # verify locales/*.json keys and placeholders
 ```
 
 Layout:
 
 ```
 src/                     UI (vanilla TypeScript + Vite)
+locales/                 one catalog per language, shared by app and web page
 src-tauri/src/server/    embedded HTTP server (listing, downloads, uploads, auth)
 src-tauri/src/           Tauri shell: tray, settings, commands
 ```

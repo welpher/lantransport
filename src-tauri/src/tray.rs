@@ -4,27 +4,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::commands;
-use crate::server::Lang;
+use crate::server::i18n;
 use crate::state::{self, AppState};
-
-fn labels(lang: Lang) -> [&'static str; 5] {
-    match lang {
-        Lang::Zh => [
-            "打开 LanTransport",
-            "复制链接",
-            "开始共享",
-            "停止共享",
-            "退出",
-        ],
-        Lang::En => [
-            "Open LanTransport",
-            "Copy link",
-            "Start sharing",
-            "Stop sharing",
-            "Quit",
-        ],
-    }
-}
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
@@ -68,20 +49,20 @@ pub fn refresh(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let lang = app.state::<AppState>().lang_value();
+    let locale = app.state::<AppState>().ui_locale();
     let snapshot = state::snapshot(app);
-    let [show, copy, start, stop, quit] = labels(lang);
+    let t = |key: &str| i18n::t(&locale, key);
 
-    let show_item = MenuItem::with_id(app, "show", show, true, None::<&str>)?;
-    let copy_item = MenuItem::with_id(app, "copy", copy, snapshot.running, None::<&str>)?;
+    let show_item = MenuItem::with_id(app, "show", t("tray.open"), true, None::<&str>)?;
+    let copy_item = MenuItem::with_id(app, "copy", t("tray.copy"), snapshot.running, None::<&str>)?;
     let toggle_item = MenuItem::with_id(
         app,
         "toggle",
-        if snapshot.running { stop } else { start },
+        if snapshot.running { t("tray.stop") } else { t("tray.start") },
         true,
         None::<&str>,
     )?;
-    let quit_item = MenuItem::with_id(app, "quit", quit, true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", t("tray.quit"), true, None::<&str>)?;
     let first_separator = PredefinedMenuItem::separator(app)?;
     let second_separator = PredefinedMenuItem::separator(app)?;
 
