@@ -38,6 +38,16 @@ No account, no cloud, no relay: the files never leave your network.
 - Light/dark follows the system; English and 中文 today, more via [Weblate](docs/TRANSLATING.md)
 - Small installers: the app uses the system webview instead of bundling a browser
 
+## Screenshots
+
+| Sharing | Settings |
+|---|---|
+| ![Sharing](docs/screenshots/app-running.png) | ![Settings](docs/screenshots/app-settings.png) |
+
+| Phone | Desktop |
+|---|---|
+| ![Phone](docs/screenshots/web-mobile.png) | ![Desktop](docs/screenshots/web-desktop.png) |
+
 ## Install
 
 ### Homebrew (macOS)
