@@ -102,5 +102,6 @@
   "page.preview": "Preview",
   "ui.clear": "Clear",
   "upload.set_key": "Set upload key",
-  "upload.clear": "Clear upload key"
+  "upload.clear": "Clear upload key",
+  "ui.upload_qr": "Upload link QR"
 }

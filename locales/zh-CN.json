@@ -102,5 +102,6 @@
   "page.preview": "预览",
   "ui.clear": "清空",
   "upload.set_key": "设置上传 key",
-  "upload.clear": "清空上传 key"
+  "upload.clear": "清空上传 key",
+  "ui.upload_qr": "上传链接二维码"
 }
