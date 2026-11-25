@@ -54,6 +54,7 @@ pub fn handle<R: BufRead>(
         supplied.is_some_and(|key| constant_time_eq(key.as_bytes(), config.key.as_bytes()));
     if !allowed {
         ctx.upload_limiter.note_failure(peer);
+        super::log_event(ctx, &format!("upload denied peer={peer} reason=wrong_key"));
         return fail(403, locale, "upload.err.wrong_key");
     }
     ctx.upload_limiter.note_success(peer);
@@ -77,21 +78,38 @@ pub fn handle<R: BufRead>(
         return fail(500, locale, "upload.err.write");
     }
 
-    if request.header("transfer-encoding").is_some() {
-        return fail(411, locale, "upload.err.length");
-    }
-    let Some(length) = request
-        .header("content-length")
-        .and_then(|value| value.parse::<u64>().ok())
-    else {
-        return fail(411, locale, "upload.err.length");
+    let chunked = request
+        .header("transfer-encoding")
+        .is_some_and(|value| value.to_ascii_lowercase().contains("chunked"));
+
+    let declared = if chunked {
+        None
+    } else {
+        let Some(length) = request
+            .header("content-length")
+            .and_then(|value| value.parse::<u64>().ok())
+        else {
+            return fail(411, locale, "upload.err.length");
+        };
+        if length == 0 {
+            return fail(400, locale, "upload.err.empty");
+        }
+        if length > config.max_bytes {
+            return fail(413, locale, "upload.err.too_large");
+        }
+        Some(length)
     };
-    if length == 0 {
-        return fail(400, locale, "upload.err.empty");
-    }
-    if length > config.max_bytes {
-        return fail(413, locale, "upload.err.too_large");
-    }
+
+    super::log_event(
+        ctx,
+        &format!(
+            "upload start peer={peer} name=\"{}\" te={:?} cl={:?} ua=\"{}\"",
+            name,
+            request.header("transfer-encoding"),
+            request.header("content-length"),
+            request.header("user-agent").unwrap_or("-")
+        ),
+    );
 
     let target = unique_target(&directory, &name);
     let temp = temp_path(&directory);
@@ -100,12 +118,40 @@ pub fn handle<R: BufRead>(
         Err(_) => return fail(500, locale, "upload.err.write"),
     };
 
-    let result = copy_body(reader, &mut file, length);
-    if result.is_err() {
-        drop(file);
-        let _ = fs::remove_file(&temp);
-        return fail(500, locale, "upload.err.interrupted");
-    }
+    let written = match declared {
+        Some(length) => match copy_body(reader, &mut file, length) {
+            Ok(written) => written,
+            Err((written, error)) => {
+                drop(file);
+                let _ = fs::remove_file(&temp);
+                super::log_event(
+                    ctx,
+                    &format!(
+                        "upload failed peer={peer} name=\"{name}\" wrote={written}/{length} error={error}"
+                    ),
+                );
+                return fail(500, locale, "upload.err.interrupted");
+            }
+        },
+        None => match copy_chunked(reader, &mut file, config.max_bytes) {
+            Ok(written) => written,
+            Err(BodyError::TooLarge) => {
+                drop(file);
+                let _ = fs::remove_file(&temp);
+                return fail(413, locale, "upload.err.too_large");
+            }
+            Err(BodyError::Io(error)) => {
+                drop(file);
+                let _ = fs::remove_file(&temp);
+                super::log_event(
+                    ctx,
+                    &format!("upload failed peer={peer} name=\"{name}\" chunked error={error}"),
+                );
+                return fail(500, locale, "upload.err.interrupted");
+            }
+        },
+    };
+
     if file.sync_all().is_err() {
         drop(file);
         let _ = fs::remove_file(&temp);
@@ -122,33 +168,131 @@ pub fn handle<R: BufRead>(
         .file_name()
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or(name);
+    super::log_event(
+        ctx,
+        &format!("upload ok peer={peer} name=\"{saved}\" bytes={written}"),
+    );
     let body = format!(
-        "{{\"name\":{},\"size\":{length}}}",
+        "{{\"name\":{},\"size\":{written}}}",
         serde_json_string(&saved)
     );
     Response::bytes(201, "application/json; charset=utf-8", body.into_bytes())
         .header("Cache-Control", "no-store")
 }
 
-fn copy_body<R: BufRead>(reader: &mut R, file: &mut File, length: u64) -> std::io::Result<()> {
+type BodyResult = Result<u64, (u64, std::io::Error)>;
+
+fn copy_body<R: BufRead>(reader: &mut R, file: &mut File, length: u64) -> BodyResult {
     let mut remaining = length;
+    let mut written = 0u64;
     let mut buffer = vec![0u8; 256 * 1024];
     while remaining > 0 {
         let want = remaining.min(buffer.len() as u64) as usize;
-        let read = reader.read(&mut buffer[..want])?;
-        if read == 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "client disconnected",
-            ));
+        let read = match reader.read(&mut buffer[..want]) {
+            Ok(0) => {
+                return Err((
+                    written,
+                    std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "client disconnected"),
+                ));
+            }
+            Ok(read) => read,
+            Err(error) => return Err((written, error)),
+        };
+        if let Err(error) = file.write_all(&buffer[..read]) {
+            return Err((written, error));
         }
-        file.write_all(&buffer[..read])?;
+        written += read as u64;
         remaining -= read as u64;
     }
-    file.flush()
+    file.flush().map_err(|error| (written, error))?;
+    Ok(written)
 }
 
-pub fn safe_file_name(raw: &str) -> Option<String> {
+pub enum BodyError {
+    TooLarge,
+    Io(std::io::Error),
+}
+
+fn copy_chunked<R: BufRead>(
+    reader: &mut R,
+    file: &mut File,
+    max_bytes: u64,
+) -> Result<u64, BodyError> {
+    let mut total = 0u64;
+    let mut buffer = vec![0u8; 64 * 1024];
+    loop {
+        let line = read_line(reader, 1024).map_err(BodyError::Io)?;
+        let size_text = line.split(';').next().unwrap_or_default().trim();
+        let size = u64::from_str_radix(size_text, 16).map_err(|_| {
+            BodyError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "bad chunk size",
+            ))
+        })?;
+        if size == 0 {
+            loop {
+                let trailer = read_line(reader, 8 * 1024).map_err(BodyError::Io)?;
+                if trailer.is_empty() {
+                    return Ok(total);
+                }
+            }
+        }
+        total = total.saturating_add(size);
+        if total > max_bytes {
+            return Err(BodyError::TooLarge);
+        }
+        let mut remaining = size;
+        while remaining > 0 {
+            let want = remaining.min(buffer.len() as u64) as usize;
+            let read = reader.read(&mut buffer[..want]).map_err(BodyError::Io)?;
+            if read == 0 {
+                return Err(BodyError::Io(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "client disconnected",
+                )));
+            }
+            file.write_all(&buffer[..read]).map_err(BodyError::Io)?;
+            remaining -= read as u64;
+        }
+        let _terminator = read_line(reader, 8).map_err(BodyError::Io)?;
+    }
+}
+
+fn read_line<R: BufRead>(reader: &mut R, max: usize) -> std::io::Result<String> {
+    let mut line = Vec::new();
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            if line.is_empty() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "client disconnected",
+                ));
+            }
+            break;
+        }
+        let (done, used) = match available.iter().position(|byte| *byte == b'\n') {
+            Some(index) => (true, index + 1),
+            None => (false, available.len()),
+        };
+        if line.len() + used > max {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "line too long",
+            ));
+        }
+        line.extend_from_slice(&available[..used]);
+        reader.consume(used);
+        if done {
+            break;
+        }
+    }
+    Ok(String::from_utf8_lossy(&line)
+        .trim_end_matches(['\r', '\n'])
+        .to_string())
+}
+
+fn safe_file_name(raw: &str) -> Option<String> {
     let name = raw.trim();
     if name.is_empty() || name.len() > 255 {
         return None;

@@ -30,6 +30,7 @@ pub struct Mount {
 }
 
 pub struct ServerContext {
+    pub log: Option<PathBuf>,
     pub mounts: Vec<Mount>,
     pub auth: auth::Auth,
     pub limiter: auth::AuthLimiter,
@@ -72,6 +73,7 @@ impl ServerHandle {
         allow_lan: bool,
         password: Option<String>,
         upload: UploadConfig,
+        log: Option<PathBuf>,
     ) -> Result<Self, StartError> {
         let mut mounts = Vec::new();
         for share in shares {
@@ -119,6 +121,7 @@ impl ServerHandle {
             .map_err(|error| StartError::Io(error.to_string()))?;
 
         let context = Arc::new(ServerContext {
+            log,
             mounts,
             auth: auth::Auth::new(password),
             limiter: auth::AuthLimiter::default(),
@@ -264,4 +267,26 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
             Err(_) => break,
         }
     }
+}
+
+pub fn log_event(ctx: &ServerContext, message: &str) {
+    let line = format!(
+        "{} {}
+",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+        message
+    );
+    if let Some(path) = &ctx.log {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = file.write_all(line.as_bytes());
+        }
+    }
+    eprint!("{line}");
 }

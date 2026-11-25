@@ -35,8 +35,15 @@ fn start_with_upload(root: &Path, password: Option<&str>, upload: UploadConfig) 
 
 fn start_many(roots: &[&Path], password: Option<&str>, upload: UploadConfig) -> ServerHandle {
     let shares: Vec<std::path::PathBuf> = roots.iter().map(|root| root.to_path_buf()).collect();
-    ServerHandle::start(&shares, 0, false, password.map(str::to_string), upload)
-        .expect("server starts")
+    ServerHandle::start(
+        &shares,
+        0,
+        false,
+        password.map(str::to_string),
+        upload,
+        None,
+    )
+    .expect("server starts")
 }
 
 fn put(port: u16, query: &str, key: Option<&str>, body: &str) -> Reply {
@@ -426,4 +433,28 @@ fn uploads_land_in_the_first_folder_inbox() {
 
     let inbox = get(server.port, "/uploads/").text();
     assert!(inbox.contains("dropped.txt"));
+}
+
+#[test]
+fn accepts_chunked_uploads() {
+    let (root, server) = upload_server("chunked");
+    let raw = "PUT /upload?name=chunked.txt HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n";
+    let reply = send(server.port, raw);
+    assert_eq!(reply.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(root.join("uploads/chunked.txt")).unwrap(),
+        "hello world"
+    );
+}
+
+#[test]
+fn rejects_oversized_chunked_uploads() {
+    let (root, server) = upload_server("chunked-big");
+    let chunk = "a".repeat(2000);
+    let raw = format!(
+        "PUT /upload?name=big.txt HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{chunk}\r\n0\r\n\r\n",
+        chunk.len()
+    );
+    assert_eq!(send(server.port, &raw).status, 413);
+    assert!(!root.join("uploads/big.txt").exists());
 }

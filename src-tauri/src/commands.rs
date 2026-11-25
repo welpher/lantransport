@@ -74,7 +74,12 @@ fn start_server(
     }
 
     let paths: Vec<std::path::PathBuf> = shares.iter().map(std::path::PathBuf::from).collect();
-    let handle = ServerHandle::start(&paths, port, allow_lan, password, upload)
+    let log = app
+        .path()
+        .app_log_dir()
+        .ok()
+        .map(|dir| dir.join("lantransport.log"));
+    let handle = ServerHandle::start(&paths, port, allow_lan, password, upload, log)
         .map_err(|error| error_code(&error))?;
 
     *state
