@@ -63,14 +63,12 @@ mod tests {
         assert!(resolve(&root, "/missing").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn rejects_symlink_escape() {
         let root = root();
-        #[cfg(unix)]
-        {
-            let _ = std::fs::remove_file(root.join("escape"));
-            std::os::unix::fs::symlink("/etc", root.join("escape")).unwrap();
-            assert!(resolve(&root, "/escape/passwd").is_none());
-        }
+        let _ = std::fs::remove_file(root.join("escape"));
+        std::os::unix::fs::symlink("/etc", root.join("escape")).unwrap();
+        assert!(resolve(&root, "/escape/passwd").is_none());
     }
 }
