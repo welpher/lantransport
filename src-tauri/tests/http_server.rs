@@ -51,17 +51,36 @@ fn put(port: u16, query: &str, key: Option<&str>, body: &str) -> Reply {
 }
 
 fn send(port: u16, raw: &str) -> Reply {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    stream.write_all(raw.as_bytes()).unwrap();
+    // Parallel loopback tests reuse ports fast enough to hit TIME_WAIT resets now
+    // and then; retrying idempotent requests keeps the suite deterministic.
+    let attempts = if raw.starts_with("GET ") || raw.starts_with("HEAD ") {
+        3
+    } else {
+        1
+    };
+    let mut last_error = None;
+    for _ in 0..attempts {
+        match try_send(port, raw) {
+            Ok(reply) => return reply,
+            Err(error) => last_error = Some(error),
+        }
+    }
+    panic!(
+        "request to 127.0.0.1:{port} failed: {}",
+        last_error.expect("attempted")
+    );
+}
+
+fn try_send(port: u16, raw: &str) -> std::io::Result<Reply> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.write_all(raw.as_bytes())?;
     let mut raw_reply = Vec::new();
-    stream.read_to_end(&mut raw_reply).unwrap();
+    stream.read_to_end(&mut raw_reply)?;
     let split = raw_reply
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
-        .expect("headers end");
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "no headers"))?;
     let head = String::from_utf8_lossy(&raw_reply[..split]).into_owned();
     let body = raw_reply[split + 4..].to_vec();
     let mut lines = head.split("\r\n");
@@ -69,16 +88,16 @@ fn send(port: u16, raw: &str) -> Reply {
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse().ok())
-        .expect("status");
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "no status"))?;
     let headers = lines
         .filter_map(|line| line.split_once(':'))
         .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
         .collect();
-    Reply {
+    Ok(Reply {
         status,
         headers,
         body,
-    }
+    })
 }
 
 fn get(port: u16, path: &str) -> Reply {
