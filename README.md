@@ -25,10 +25,12 @@ No account, no cloud, no relay: the files never leave your network.
 
 ## Features
 
+- **Share several folders at once** — their contents appear as one merged listing;
+  files with the same name are labeled by source folder
 - **Browser UI** for any phone, tablet or computer — no app needed on the other side
 - **Read-only by default**: browse, preview, download; Range requests so downloads resume
 - **Optional password** for browsing (HTTP Basic, username `share`)
-- **Key-gated uploads**: rotate the key anytime; uploads land in the folder being viewed
+- **Key-gated uploads**: rotate the key anytime; files land in the first folder's `uploads/`
 - **QR code** for the LAN link, one click to copy
 - **Tray app**: keeps sharing while the window is closed; start/stop from the tray
 - **Cross-platform**: macOS (Intel & Apple Silicon), Windows, Linux

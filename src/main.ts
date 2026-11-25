@@ -8,7 +8,7 @@ import QRCode from "qrcode";
 import { LANGUAGES, detectLocale, normalizeLocale, translate } from "./i18n";
 
 interface Settings {
-  root: string | null;
+  shares: string[];
   port: number;
   allow_lan: boolean;
   password: string | null;
@@ -44,10 +44,10 @@ const elements = {
   statusText: $("status-text"),
   locale: $<HTMLSelectElement>("locale"),
   setupCard: $("setup-card"),
-  folderLabel: $("folder-label"),
-  folderPath: $("folder-path"),
-  choose: $<HTMLButtonElement>("choose"),
-  reveal: $<HTMLButtonElement>("reveal"),
+  foldersLabel: $("folders-label"),
+  foldersHint: $("folders-hint"),
+  folders: $("folders"),
+  addFolder: $<HTMLButtonElement>("add-folder"),
   portLabel: $("port-label"),
   port: $<HTMLInputElement>("port"),
   lanLabel: $("lan-label"),
@@ -100,7 +100,7 @@ let localError: string | null = null;
 let qrUrl: string | null = null;
 
 const draft = {
-  root: null as string | null,
+  shares: [] as string[],
   port: 8000,
   allowLan: true,
   password: "",
@@ -143,6 +143,11 @@ function text() {
     sharing: t("ui.sharing"),
     live: t("ui.live"),
     copyKey: t("ui.copy_key"),
+    folders: t("ui.folders"),
+    addFolder: t("ui.add_folder"),
+    remove: t("ui.remove"),
+    inbox: t("ui.inbox"),
+    foldersHint: t("ui.folders_hint"),
     security: t("ui.security"),
     version: t("ui.version"),
   };
@@ -156,16 +161,54 @@ function syncInputs(): void {
   elements.password.value = draft.password;
   elements.autoStart.checked = settings?.auto_start ?? false;
   elements.tray.checked = settings?.minimize_to_tray ?? true;
-  renderFolder();
+  renderFolders();
 }
 
-function renderFolder(): void {
-  const path = draft.root ?? snapshot?.settings.root ?? null;
+function folderName(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+function renderFolders(): void {
   const label = text();
-  elements.folderPath.textContent = path ?? label.noFolder;
-  elements.folderPath.classList.toggle("empty", !path);
-  elements.folderPath.title = path ?? "";
-  elements.reveal.hidden = !path;
+  const rows = draft.shares.map((path, index) => {
+    const row = document.createElement("div");
+    row.className = "folder-item";
+    const name = document.createElement("span");
+    name.className = "folder-name";
+    name.textContent = folderName(path);
+    const full = document.createElement("span");
+    full.className = "folder-path";
+    full.textContent = path;
+    full.title = path;
+    row.append(name, full);
+    if (index === 0) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = label.inbox;
+      row.append(badge);
+    }
+    const open = document.createElement("button");
+    open.className = "btn ghost";
+    open.textContent = label.reveal;
+    open.addEventListener("click", () => void revealItemInDir(path));
+    const remove = document.createElement("button");
+    remove.className = "btn ghost";
+    remove.textContent = label.remove;
+    remove.addEventListener("click", () => {
+      draft.shares.splice(index, 1);
+      apply();
+    });
+    row.append(open, remove);
+    return row;
+  });
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "folders-empty";
+    empty.textContent = label.noFolder;
+    rows.push(empty);
+  }
+  elements.folders.replaceChildren(...rows);
 }
 
 function apply(): void {
@@ -175,9 +218,9 @@ function apply(): void {
   elements.locale.value = locale;
 
   elements.tagline.textContent = label.tagline;
-  elements.folderLabel.textContent = label.folder;
-  elements.choose.textContent = label.choose;
-  elements.reveal.textContent = label.reveal;
+  elements.foldersLabel.textContent = label.folders;
+  elements.foldersHint.textContent = label.foldersHint;
+  elements.addFolder.textContent = label.addFolder;
   elements.portLabel.textContent = label.port;
   elements.lanLabel.textContent = label.lan;
   elements.passwordLabel.textContent = label.password;
@@ -206,7 +249,10 @@ function apply(): void {
   const settings = snapshot?.settings;
   elements.setupCard.hidden = running;
   elements.runningCard.hidden = !running;
-  elements.sharingFolder.textContent = settings?.root ?? "";
+  const shares = settings?.shares ?? [];
+  elements.sharingFolder.textContent = shares.length > 1
+    ? `${folderName(shares[0])} +${shares.length - 1}`
+    : (shares[0] ?? "");
   const shareUploads = running
     && (settings?.allow_uploads ?? false)
     && Boolean(settings?.upload_key);
@@ -226,10 +272,10 @@ function apply(): void {
   elements.statusText.textContent = busy ? label.starting : running ? label.running : label.stopped;
 
   elements.primary.textContent = label.start;
-  elements.primary.disabled = busy || running;
+  elements.primary.disabled = busy || running || draft.shares.length === 0;
 
   for (const control of [
-    elements.choose,
+    elements.addFolder,
     elements.port,
     elements.lan,
     elements.password,
@@ -238,10 +284,10 @@ function apply(): void {
     (control as HTMLInputElement | HTMLButtonElement).disabled = running || busy;
   }
 
-  renderFolder();
   renderUrls();
   renderError();
 
+  renderFolders();
   document.title = running && snapshot?.port ? `LanTransport · :${snapshot.port}` : "LanTransport";
 }
 
@@ -280,7 +326,7 @@ function renderError(): void {
 }
 
 async function start(): Promise<void> {
-  if (!draft.root) {
+  if (!draft.shares.length) {
     localError = "no_folder";
     apply();
     return;
@@ -290,7 +336,7 @@ async function start(): Promise<void> {
   apply();
   try {
     snapshot = await invoke<Snapshot>("start_sharing", {
-      root: draft.root,
+      shares: draft.shares,
       port: Number(elements.port.value),
       allowLan: elements.lan.checked,
       password: elements.password.value || null,
@@ -329,15 +375,15 @@ async function updatePrefs(patch: Record<string, unknown>): Promise<void> {
   }
 }
 
-async function chooseFolder(): Promise<void> {
+async function addFolder(): Promise<void> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: text().folder,
-    defaultPath: draft.root ?? undefined,
+    title: text().folders,
+    defaultPath: draft.shares[draft.shares.length - 1] ?? undefined,
   });
-  if (typeof selected === "string") {
-    draft.root = selected;
+  if (typeof selected === "string" && !draft.shares.includes(selected)) {
+    draft.shares.push(selected);
     localError = null;
     apply();
   }
@@ -406,7 +452,7 @@ async function boot(): Promise<void> {
   snapshot = await invoke<Snapshot>("get_snapshot");
   const stored = snapshot.settings.locale;
   locale = stored === "auto" ? detectLocale() : normalizeLocale(stored);
-  draft.root = snapshot.settings.root;
+  draft.shares = [...snapshot.settings.shares];
   draft.port = snapshot.settings.port;
   draft.allowLan = snapshot.settings.allow_lan;
   draft.password = snapshot.settings.password ?? "";
@@ -442,11 +488,7 @@ async function boot(): Promise<void> {
   });
 }
 
-elements.choose.addEventListener("click", () => void chooseFolder());
-elements.reveal.addEventListener("click", () => {
-  const path = draft.root ?? snapshot?.settings.root;
-  if (path) void revealItemInDir(path);
-});
+elements.addFolder.addEventListener("click", () => void addFolder());
 elements.primary.addEventListener("click", () => void start());
 elements.stop.addEventListener("click", () => void stop());
 elements.password.addEventListener("keydown", (event) => {

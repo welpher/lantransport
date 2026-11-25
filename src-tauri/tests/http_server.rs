@@ -30,7 +30,12 @@ fn start(root: &Path, password: Option<&str>) -> ServerHandle {
 }
 
 fn start_with_upload(root: &Path, password: Option<&str>, upload: UploadConfig) -> ServerHandle {
-    ServerHandle::start(root, 0, false, password.map(str::to_string), upload)
+    start_many(&[root], password, upload)
+}
+
+fn start_many(roots: &[&Path], password: Option<&str>, upload: UploadConfig) -> ServerHandle {
+    let shares: Vec<std::path::PathBuf> = roots.iter().map(|root| root.to_path_buf()).collect();
+    ServerHandle::start(&shares, 0, false, password.map(str::to_string), upload)
         .expect("server starts")
 }
 
@@ -257,19 +262,14 @@ fn upload_server(name: &str) -> (std::path::PathBuf, ServerHandle) {
 #[test]
 fn uploads_with_valid_key() {
     let (root, server) = upload_server("upload");
-    let reply = put(
-        server.port,
-        "dir=%2Fsub%2F&name=note+one.txt",
-        Some("k3y"),
-        "payload",
-    );
+    let reply = put(server.port, "name=note+one.txt", Some("k3y"), "payload");
     assert_eq!(reply.status, 201);
     assert_eq!(
-        std::fs::read_to_string(root.join("sub/note one.txt")).unwrap(),
+        std::fs::read_to_string(root.join("uploads/note one.txt")).unwrap(),
         "payload"
     );
 
-    let page = get(server.port, "/sub/");
+    let page = get(server.port, "/uploads/");
     assert!(page.text().contains("note one.txt"));
 }
 
@@ -277,16 +277,20 @@ fn uploads_with_valid_key() {
 fn upload_collision_gets_suffix() {
     let (root, server) = upload_server("collision");
     assert_eq!(
-        put(server.port, "dir=%2F&name=hello.txt", Some("k3y"), "new").status,
+        put(server.port, "name=hello.txt", Some("k3y"), "new").status,
         201
     );
     assert_eq!(
-        std::fs::read_to_string(root.join("hello (1).txt")).unwrap(),
+        std::fs::read_to_string(root.join("uploads/hello.txt")).unwrap(),
         "new"
     );
     assert_eq!(
-        std::fs::read_to_string(root.join("hello.txt")).unwrap(),
-        "hello"
+        put(server.port, "name=hello.txt", Some("k3y"), "second").status,
+        201
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("uploads/hello (1).txt")).unwrap(),
+        "second"
     );
 }
 
@@ -294,28 +298,29 @@ fn upload_collision_gets_suffix() {
 fn upload_rejects_bad_key_and_names() {
     let (root, server) = upload_server("upload-bad");
     assert_eq!(
-        put(server.port, "dir=%2F&name=x.txt", Some("nope"), "x").status,
+        put(server.port, "name=x.txt", Some("nope"), "x").status,
         403
     );
+    assert_eq!(put(server.port, "name=x.txt", None, "x").status, 403);
     assert_eq!(
-        put(server.port, "dir=%2F&name=x.txt", None, "x").status,
-        403
-    );
-    assert_eq!(
-        put(server.port, "dir=%2F&name=..%2Fevil", Some("k3y"), "x").status,
+        put(server.port, "name=..%2Fevil", Some("k3y"), "x").status,
         400
     );
     assert_eq!(
-        put(server.port, "dir=%2F..%2F&name=x.txt", Some("k3y"), "x").status,
-        404
+        put(server.port, "name=%2Ehidden", Some("k3y"), "x").status,
+        400
     );
-    assert!(std::fs::read_dir(&root).unwrap().all(|entry| {
-        !entry
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .starts_with(".lantransport")
-    }));
+    let inbox = root.join("uploads");
+    assert!(
+        !inbox.exists()
+            || std::fs::read_dir(&inbox).unwrap().all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".lantransport")
+            })
+    );
 }
 
 #[test]
@@ -333,4 +338,73 @@ fn upload_respects_size_limit_and_switch() {
         put(off.port, "dir=%2F&name=x.txt", Some("k3y"), "x").status,
         403
     );
+}
+
+fn second_root(name: &str) -> std::path::PathBuf {
+    let dir =
+        std::env::temp_dir().join(format!("lantransport-second-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    std::fs::write(dir.join("second.txt"), b"two").unwrap();
+    std::fs::write(dir.join("sub/other.txt"), b"other").unwrap();
+    std::fs::canonicalize(dir).unwrap()
+}
+
+#[test]
+fn merges_multiple_folders() {
+    let first = temp_root("merge");
+    let second = second_root("merge");
+    let server = start_many(&[&first, &second], None, UploadConfig::default());
+
+    let root = get(server.port, "/").text();
+    assert!(root.contains("hello.txt"));
+    assert!(root.contains("second.txt"));
+    assert!(root.contains("sub/"));
+
+    let sub = get(server.port, "/sub/").text();
+    assert!(sub.contains("nested.bin"));
+    assert!(sub.contains("other.txt"));
+}
+
+#[test]
+fn duplicate_names_are_disambiguated_by_source() {
+    let first = temp_root("dupe");
+    let second = second_root("dupe");
+    std::fs::write(first.join("notes.txt"), b"from-first").unwrap();
+    std::fs::write(second.join("notes.txt"), b"from-second").unwrap();
+    let server = start_many(&[&first, &second], None, UploadConfig::default());
+
+    let page = get(server.port, "/").text();
+    assert!(page.matches("notes.txt").count() >= 2);
+    assert!(page.contains("src=0") && page.contains("src=1"));
+
+    assert_eq!(get(server.port, "/notes.txt?src=0").text(), "from-first");
+    assert_eq!(get(server.port, "/notes.txt?src=1").text(), "from-second");
+    assert_eq!(get(server.port, "/notes.txt").text(), "from-first");
+}
+
+#[test]
+fn uploads_land_in_the_first_folder_inbox() {
+    let first = temp_root("inbox-first");
+    let second = second_root("inbox-second");
+    let server = start_many(
+        &[&first, &second],
+        None,
+        UploadConfig {
+            enabled: true,
+            key: "k3y".into(),
+            max_bytes: 1024,
+        },
+    );
+
+    let reply = put(server.port, "name=dropped.txt", Some("k3y"), "payload");
+    assert_eq!(reply.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(first.join("uploads/dropped.txt")).unwrap(),
+        "payload"
+    );
+    assert!(!second.join("uploads").exists());
+
+    let inbox = get(server.port, "/uploads/").text();
+    assert!(inbox.contains("dropped.txt"));
 }

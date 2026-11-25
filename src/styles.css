@@ -175,6 +175,44 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .qr { display: flex; justify-content: center; padding: 6px 0 2px; }
 .qr img { width: 208px; height: 208px; border-radius: 12px; background: #fff; padding: 10px; border: 1px solid var(--line); }
 .prefs { gap: 10px; }
+.folders { display: flex; flex-direction: column; gap: 8px; }
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: var(--field);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.folder-name { font-weight: 600; font-size: 13px; white-space: nowrap; }
+.folder-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: text;
+}
+.badge {
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-weak);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.folders-empty {
+  color: var(--muted);
+  font-size: 13px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+}
+.add-folder { align-self: flex-start; }
 .running-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .running-title { min-width: 0; }
 .running-title h2 {

@@ -2,7 +2,9 @@
 
 ## Now
 
+- [x] Multiple folders merged into one listing, source labels on duplicate names
 - [x] Read-only listing, search, breadcrumbs, Range downloads
+- [x] Uploads land in the first folder's `uploads/`
 - [x] Optional browsing password
 - [x] Key-gated uploads with size limit
 - [x] Tray, autostart on launch, minimize to tray

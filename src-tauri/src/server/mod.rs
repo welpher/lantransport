@@ -11,7 +11,7 @@ pub mod upload;
 
 use std::io::{BufReader, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
@@ -23,8 +23,14 @@ use crate::server::upload::UploadConfig;
 const MAX_CONNECTIONS: usize = 64;
 const MAX_REQUESTS_PER_CONNECTION: usize = 100;
 
+#[derive(Clone)]
+pub struct Mount {
+    pub label: String,
+    pub dir: PathBuf,
+}
+
 pub struct ServerContext {
-    pub root: PathBuf,
+    pub mounts: Vec<Mount>,
     pub auth: auth::Auth,
     pub limiter: auth::AuthLimiter,
     pub upload: RwLock<UploadConfig>,
@@ -61,15 +67,37 @@ impl std::fmt::Display for StartError {
 
 impl ServerHandle {
     pub fn start(
-        root: &Path,
+        shares: &[PathBuf],
         port: u16,
         allow_lan: bool,
         password: Option<String>,
         upload: UploadConfig,
     ) -> Result<Self, StartError> {
-        let root = std::fs::canonicalize(root).map_err(|_| StartError::InvalidRoot)?;
-        if !root.is_dir() {
+        let mut mounts = Vec::new();
+        for share in shares {
+            let dir = std::fs::canonicalize(share).map_err(|_| StartError::InvalidRoot)?;
+            if !dir.is_dir() {
+                return Err(StartError::InvalidRoot);
+            }
+            if mounts.iter().any(|mount: &Mount| mount.dir == dir) {
+                continue;
+            }
+            let label = dir
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| dir.display().to_string());
+            mounts.push(Mount { label, dir });
+        }
+        if mounts.is_empty() {
             return Err(StartError::InvalidRoot);
+        }
+        let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for mount in &mut mounts {
+            let count = seen.entry(mount.label.clone()).or_insert(0);
+            *count += 1;
+            if *count > 1 {
+                mount.label = format!("{} ({count})", mount.label);
+            }
         }
 
         let host = if allow_lan {
@@ -91,7 +119,7 @@ impl ServerHandle {
             .map_err(|error| StartError::Io(error.to_string()))?;
 
         let context = Arc::new(ServerContext {
-            root,
+            mounts,
             auth: auth::Auth::new(password),
             limiter: auth::AuthLimiter::default(),
             upload: RwLock::new(upload),
@@ -121,6 +149,14 @@ impl ServerHandle {
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
+    }
+
+    pub fn mount_labels(&self) -> Vec<String> {
+        self.context
+            .mounts
+            .iter()
+            .map(|mount| mount.label.clone())
+            .collect()
     }
 
     pub fn set_upload(&self, config: UploadConfig) {

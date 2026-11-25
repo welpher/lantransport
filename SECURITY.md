@@ -20,11 +20,12 @@ files to the public internet.
 - **Password storage**: the browsing password is only saved when *Remember
   password* is checked, in the app config file with `0600` permissions on Unix.
   It is not hashed.
-- **Path confinement**: every request is resolved with `canonicalize` and must
-  stay inside the shared root. Hidden entries (`dotfiles`) are never listed or
+- **Path confinement**: every request is resolved with `canonicalize` per shared
+  folder and must stay inside that folder. Hidden entries (`dotfiles`) are never listed or
   served, and upload file names are sanitized. Symlinks pointing outside the root
   are refused.
-- **Writes** are limited to uploads: no delete, rename or overwrite. Uploads are
+- **Writes** are limited to uploads into `<first folder>/uploads/`: no delete,
+  rename or overwrite. Uploads are
   written to a hidden temp file and renamed into place; name collisions get a
   ` (1)` suffix.
 

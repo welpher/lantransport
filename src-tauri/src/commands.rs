@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::server::i18n;
@@ -34,7 +32,7 @@ pub fn upload_config(settings: &crate::settings::Settings) -> UploadConfig {
 
 pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     let state = app.state::<AppState>();
-    let (root, port, allow_lan, password, upload) = {
+    let (shares, port, allow_lan, password, upload) = {
         let settings = state
             .settings
             .lock()
@@ -45,22 +43,22 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
             None
         };
         (
-            settings.root.clone(),
+            settings.shares.clone(),
             settings.port,
             settings.allow_lan,
             password,
             upload_config(&settings),
         )
     };
-    let Some(root) = root else {
+    if shares.is_empty() {
         return Err("no_folder".into());
-    };
-    start_server(app, &root, port, allow_lan, password, upload)
+    }
+    start_server(app, &shares, port, allow_lan, password, upload)
 }
 
 fn start_server(
     app: &AppHandle,
-    root: &str,
+    shares: &[String],
     port: u16,
     allow_lan: bool,
     password: Option<String>,
@@ -80,7 +78,8 @@ fn start_server(
         }
     }
 
-    let handle = ServerHandle::start(Path::new(root), port, allow_lan, password, upload)
+    let paths: Vec<std::path::PathBuf> = shares.iter().map(std::path::PathBuf::from).collect();
+    let handle = ServerHandle::start(&paths, port, allow_lan, password, upload)
         .map_err(|error| error_code(&error))?;
 
     *state
@@ -143,13 +142,16 @@ pub fn get_snapshot(app: AppHandle) -> Snapshot {
 pub fn start_sharing(
     app: AppHandle,
     state: State<'_, AppState>,
-    root: String,
+    shares: Vec<String>,
     port: u16,
     allow_lan: bool,
     password: Option<String>,
     remember_password: bool,
 ) -> Result<Snapshot, String> {
     let password = password.filter(|value| !value.is_empty());
+    if shares.is_empty() {
+        return Err("no_folder".into());
+    }
     if remember_password && password.is_none() {
         return Err("empty_password".into());
     }
@@ -164,7 +166,7 @@ pub fn start_sharing(
             .settings
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        settings.root = Some(root.clone());
+        settings.shares = shares.clone();
         settings.port = port;
         settings.allow_lan = allow_lan;
         settings.remember_password = remember_password;
@@ -182,7 +184,7 @@ pub fn start_sharing(
         .clone();
     match start_server(
         &app,
-        &root,
+        &shares,
         port,
         allow_lan,
         password,

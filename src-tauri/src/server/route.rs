@@ -1,8 +1,9 @@
 //! Request routing: listing, file download, auth and error pages.
 
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -50,15 +51,29 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         ctx.limiter.note_success(peer);
     }
 
-    let Some(target) = paths::resolve(&ctx.root, &decoded) else {
+    let Some(segments) = paths::segments(&decoded) else {
         return simple(404, locale);
     };
 
-    let Ok(metadata) = fs::metadata(&target) else {
+    let found: Vec<(usize, PathBuf)> = ctx
+        .mounts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, mount)| {
+            paths::resolve_in(&mount.dir, &segments).map(|target| (index, target))
+        })
+        .collect();
+    if found.is_empty() {
         return simple(404, locale);
-    };
+    }
 
-    if metadata.is_dir() {
+    let dirs: Vec<(usize, PathBuf)> = found
+        .iter()
+        .filter(|(_, target)| target.is_dir())
+        .cloned()
+        .collect();
+
+    if !dirs.is_empty() {
         if !decoded.ends_with('/') {
             let mut location = format!("{}/", raw_path.trim_end_matches('/'));
             if !raw_query.is_empty() {
@@ -72,55 +87,96 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
             .read()
             .map(|config| config.enabled && !config.key.is_empty())
             .unwrap_or(false);
-        serve_listing(&target, &decoded, locale, uploads)
-    } else if metadata.is_file() {
-        serve_file(
-            &target,
-            &metadata,
-            raw_query.contains("download"),
-            request,
-            locale,
-        )
-    } else {
-        simple(404, locale)
+        return serve_listing(&ctx.mounts, &dirs, &decoded, locale, uploads);
     }
+
+    let requested_mount = super::http::query_param(&request.target, "src")
+        .and_then(|value| value.parse::<usize>().ok());
+    let Some((_, target)) = requested_mount
+        .and_then(|index| found.iter().find(|(mount, _)| *mount == index))
+        .or_else(|| found.first())
+    else {
+        return simple(404, locale);
+    };
+    let Ok(metadata) = fs::metadata(target) else {
+        return simple(404, locale);
+    };
+    if !metadata.is_file() {
+        return simple(404, locale);
+    }
+    serve_file(
+        target,
+        &metadata,
+        raw_query.contains("download"),
+        request,
+        locale,
+    )
 }
 
-fn serve_listing(dir: &Path, url_path: &str, locale: &str, uploads: bool) -> Response {
-    let read = match fs::read_dir(dir) {
-        Ok(read) => read,
-        Err(_) => return simple(403, locale),
-    };
-
-    let mut entries = Vec::new();
+fn serve_listing(
+    mounts: &[super::Mount],
+    dirs: &[(usize, PathBuf)],
+    url_path: &str,
+    locale: &str,
+    uploads: bool,
+) -> Response {
+    let mut merged: BTreeMap<String, Entry> = BTreeMap::new();
+    let mut readable = false;
     let mut total_size = 0u64;
-    for entry in read.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
-            continue;
-        }
-        let Ok(file_type) = entry.file_type() else {
+
+    for (mount_index, dir) in dirs {
+        let Ok(read) = fs::read_dir(dir) else {
             continue;
         };
-        let metadata = entry.metadata().ok();
-        let size = metadata.as_ref().map_or(0, |meta| meta.len());
-        if !file_type.is_dir() {
-            total_size += size;
+        readable = true;
+        for entry in read.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            let slot = merged.entry(name.clone()).or_insert_with(|| Entry {
+                name,
+                dir_mounts: Vec::new(),
+                files: Vec::new(),
+            });
+            if file_type.is_dir() {
+                if !slot.dir_mounts.contains(mount_index) {
+                    slot.dir_mounts.push(*mount_index);
+                }
+            } else {
+                let metadata = entry.metadata().ok();
+                let size = metadata.as_ref().map_or(0, |meta| meta.len());
+                total_size += size;
+                slot.files.push(listing::FileEntry {
+                    mount: *mount_index,
+                    size,
+                    modified: metadata
+                        .and_then(|meta| meta.modified().ok())
+                        .map(DateTime::<Local>::from),
+                    label: mounts[*mount_index].label.clone(),
+                });
+            }
         }
-        entries.push(Entry {
-            name,
-            is_dir: file_type.is_dir(),
-            size,
-            modified: metadata
-                .and_then(|meta| meta.modified().ok())
-                .map(DateTime::<Local>::from),
-        });
     }
 
-    let dir_name = dir
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| dir.display().to_string());
+    if !readable {
+        return simple(403, locale);
+    }
+
+    let entries: Vec<Entry> = merged.into_values().collect();
+    let dir_name = if url_path == "/" {
+        i18n::t(locale, "page.all_files")
+    } else {
+        url_path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(url_path)
+            .to_string()
+    };
     let nonce = nonce();
     let page = listing::render(
         &dir_name, url_path, &entries, total_size, locale, &nonce, uploads,

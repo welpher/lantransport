@@ -5,11 +5,17 @@ use chrono::{DateTime, Local};
 use super::http::{encode_segment, escape_html};
 use super::i18n;
 
-pub struct Entry {
-    pub name: String,
-    pub is_dir: bool,
+pub struct FileEntry {
+    pub mount: usize,
     pub size: u64,
     pub modified: Option<DateTime<Local>>,
+    pub label: String,
+}
+
+pub struct Entry {
+    pub name: String,
+    pub dir_mounts: Vec<usize>,
+    pub files: Vec<FileEntry>,
 }
 
 pub fn human_size(n: u64) -> String {
@@ -68,8 +74,14 @@ pub fn render(
         ));
     }
 
-    let mut dirs: Vec<&Entry> = entries.iter().filter(|entry| entry.is_dir).collect();
-    let mut files: Vec<&Entry> = entries.iter().filter(|entry| !entry.is_dir).collect();
+    let mut dirs: Vec<&Entry> = entries
+        .iter()
+        .filter(|entry| !entry.dir_mounts.is_empty())
+        .collect();
+    let mut files: Vec<&Entry> = entries
+        .iter()
+        .filter(|entry| !entry.files.is_empty())
+        .collect();
     dirs.sort_by_key(|entry| entry.name.to_lowercase());
     files.sort_by_key(|entry| entry.name.to_lowercase());
 
@@ -84,22 +96,37 @@ pub fn render(
     }
 
     for entry in &files {
-        let href = encode_segment(&entry.name);
-        let modified = entry.modified.map_or_else(
-            || "—".to_string(),
-            |time| time.format("%Y-%m-%d %H:%M").to_string(),
-        );
-        rows.push_str(&format!(
-            "<tr data-name='{}'><td><div class='name'><span class='ext'>{}</span><a href='{}'>{}</a></div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{}?download=1'>{}</a></td></tr>",
-            escape_html(&entry.name.to_lowercase()),
-            escape_html(&ext_label(&entry.name, false)),
-            href,
-            escape_html(&entry.name),
-            human_size(entry.size),
-            modified,
-            href,
-            t("page.download")
-        ));
+        let needs_src = entry.files.len() > 1 || !entry.dir_mounts.is_empty();
+        for file in &entry.files {
+            let href = if needs_src {
+                format!("{}?src={}", encode_segment(&entry.name), file.mount)
+            } else {
+                encode_segment(&entry.name)
+            };
+            let download = if href.contains('?') {
+                format!("{href}&download=1")
+            } else {
+                format!("{href}?download=1")
+            };
+            let source = if needs_src {
+                format!("<span class='src'>{}</span>", escape_html(&file.label))
+            } else {
+                String::new()
+            };
+            let modified = file.modified.map_or_else(
+                || "—".to_string(),
+                |time| time.format("%Y-%m-%d %H:%M").to_string(),
+            );
+            rows.push_str(&format!(
+                "<tr data-name='{}'><td><div class='name'><span class='ext'>{}</span><a href='{href}'>{}</a>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{download}'>{}</a></td></tr>",
+                escape_html(&entry.name.to_lowercase()),
+                escape_html(&ext_label(&entry.name, false)),
+                escape_html(&entry.name),
+                human_size(file.size),
+                modified,
+                t("page.download")
+            ));
+        }
     }
 
     let mut crumbs = format!("<a href='/'>{}</a>", t("page.home"));
@@ -349,6 +376,15 @@ tbody tr:hover { background: var(--row-hover); }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
 .foot { margin-top: 16px; font-size: 12px; color: var(--muted); text-align: center; }
 .brand { color: inherit; text-decoration: none; opacity: .7; }
+.src {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 7px;
+  margin-left: 2px;
+}
 .brand:hover { opacity: 1; text-decoration: underline; }
 @media (max-width: 620px) {
   body { padding: 16px 10px 36px; }
@@ -387,8 +423,7 @@ const UPLOAD_JS: &str = r#"
   const keyInput = document.getElementById('up-key');
   const save = document.getElementById('up-save');
   const status = document.getElementById('up-status');
-  const dir = location.pathname;
-  const storeKey = 'lantransport-upload-key';
+    const storeKey = 'lantransport-upload-key';
   const params = new URLSearchParams(location.search);
   const fromUrl = params.get('key');
   if (fromUrl) {
@@ -408,7 +443,7 @@ const UPLOAD_JS: &str = r#"
   function send(file, key) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const url = '/upload?dir=' + encodeURIComponent(dir) + '&name=' + encodeURIComponent(file.name);
+      const url = '/upload?name=' + encodeURIComponent(file.name);
       xhr.open('PUT', url);
       xhr.setRequestHeader('X-Upload-Key', key);
       xhr.upload.onprogress = event => {
@@ -453,9 +488,13 @@ mod tests {
     fn escapes_names_in_listing() {
         let entries = vec![Entry {
             name: "<script>.txt".into(),
-            is_dir: false,
-            size: 1,
-            modified: None,
+            dir_mounts: Vec::new(),
+            files: vec![FileEntry {
+                mount: 0,
+                size: 1,
+                modified: None,
+                label: "share".into(),
+            }],
         }];
         let page = render("x", "/", &entries, 1, "en", "abc", false);
         assert!(!page.contains("<script>.txt"));

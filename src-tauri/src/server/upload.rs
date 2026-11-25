@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::http::{Request, Response, escape_html, query_pairs, query_param, split_target};
-use super::{ServerContext, i18n, paths};
+use super::{ServerContext, i18n};
 
 #[derive(Clone, Debug)]
 pub struct UploadConfig {
@@ -60,10 +60,6 @@ pub fn handle<R: BufRead>(
 
     let (_, raw_query) = split_target(&request.target);
     let query = query_pairs(raw_query);
-    let dir_path = query
-        .iter()
-        .find(|(name, _)| name == "dir")
-        .map_or("/", |(_, value)| value.as_str());
     let Some(name) = query
         .iter()
         .find(|(name, _)| name == "name")
@@ -73,11 +69,12 @@ pub fn handle<R: BufRead>(
         return fail(400, locale, "upload.err.bad_name");
     };
 
-    let Some(directory) = paths::resolve(&ctx.root, dir_path) else {
+    let Some(first) = ctx.mounts.first() else {
         return fail(404, locale, "upload.err.no_folder");
     };
-    if !directory.is_dir() {
-        return fail(404, locale, "upload.err.no_folder");
+    let directory = first.dir.join("uploads");
+    if fs::create_dir_all(&directory).is_err() {
+        return fail(500, locale, "upload.err.write");
     }
 
     if request.header("transfer-encoding").is_some() {

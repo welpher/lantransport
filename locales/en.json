@@ -26,7 +26,7 @@
   "ui.regenerate": "Regenerate",
   "ui.copy_link": "Copy upload link",
   "ui.max_upload": "Max file size (MB)",
-  "ui.upload_hint": "Send the link and key together. Recipients can drop files into the folder they are viewing.",
+  "ui.upload_hint": "Send the link and key together. Files land in the first folder's uploads/.",
   "ui.security": "Anyone on this network with the link can browse and download. Only people with the upload key can add files; nothing can be deleted.",
   "ui.version": "Version",
   "error.port_in_use": "That port is taken. Try another one.",
@@ -52,7 +52,7 @@
   "page.filtered": "{n} items match",
   "page.language": "Language",
   "upload.title": "Upload files",
-  "upload.hint": "Upload key required · you can also drop files here",
+  "upload.hint": "Upload key required · files go to the first folder's uploads/",
   "upload.choose": "Choose files",
   "upload.save": "Remember",
   "upload.need_key": "Enter the upload key first",
@@ -84,5 +84,10 @@
   "language.name": "English",
   "ui.sharing": "Sharing",
   "ui.live": "Live",
-  "ui.copy_key": "Copy key"
+  "ui.copy_key": "Copy key",
+  "ui.folders": "Folders",
+  "ui.add_folder": "Add folder",
+  "ui.remove": "Remove",
+  "ui.inbox": "uploads",
+  "ui.folders_hint": "Uploads land in the first folder's uploads/."
 }

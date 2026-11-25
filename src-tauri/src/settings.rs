@@ -7,7 +7,9 @@ use tauri::{AppHandle, Manager};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// Legacy single-folder field, migrated into `shares` on load.
     pub root: Option<String>,
+    pub shares: Vec<String>,
     pub port: u16,
     pub allow_lan: bool,
     pub password: Option<String>,
@@ -24,6 +26,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             root: None,
+            shares: Vec::new(),
             port: 8000,
             allow_lan: true,
             password: None,
@@ -54,6 +57,12 @@ impl Settings {
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
+        if settings.shares.is_empty()
+            && let Some(root) = settings.root.take()
+        {
+            settings.shares.push(root);
+        }
+        settings.root = None;
         if settings.locale != "auto" {
             settings.locale = crate::server::i18n::normalize(&settings.locale)
                 .unwrap_or("en")

@@ -26,7 +26,7 @@
   "ui.regenerate": "换一个",
   "ui.copy_link": "复制上传链接",
   "ui.max_upload": "单个文件上限（MB）",
-  "ui.upload_hint": "把链接和 key 一起发给对方。对方打开链接后可以把文件拖进当前目录。",
+  "ui.upload_hint": "把链接和 key 一起发给对方。文件会存到第一个文件夹的 uploads/。",
   "ui.security": "拿到链接的人可以浏览和下载；只有拿到上传 key 的人能添加文件，任何人都不能删除或修改。",
   "ui.version": "版本",
   "error.port_in_use": "端口被占用了，换一个端口试试。",
@@ -52,7 +52,7 @@
   "page.filtered": "筛选出 {n} 个项目",
   "page.language": "语言",
   "upload.title": "上传文件",
-  "upload.hint": "需要上传 key · 也可以把文件拖进来",
+  "upload.hint": "需要上传 key · 文件会存到第一个文件夹的 uploads/",
   "upload.choose": "选择文件",
   "upload.save": "记住",
   "upload.need_key": "先填写上传 key",
@@ -84,5 +84,10 @@
   "language.name": "中文",
   "ui.sharing": "正在共享",
   "ui.live": "运行中",
-  "ui.copy_key": "复制 key"
+  "ui.copy_key": "复制 key",
+  "ui.folders": "文件夹",
+  "ui.add_folder": "添加文件夹",
+  "ui.remove": "移除",
+  "ui.inbox": "上传目录",
+  "ui.folders_hint": "上传的文件会存到第一个文件夹的 uploads/。"
 }

@@ -7,7 +7,7 @@ const snapshot = {
   version: "0.1.0",
   platform: "macos",
   settings: {
-    root: "/Users/me/Downloads",
+    shares: ["/Users/me/Downloads", "/Volumes/Photos"],
     port: 8000,
     allow_lan: true,
     password: null,

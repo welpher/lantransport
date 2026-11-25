@@ -26,7 +26,7 @@ pub fn run() {
                     .settings
                     .lock()
                     .unwrap_or_else(|error| error.into_inner());
-                settings.auto_start && settings.root.is_some()
+                settings.auto_start && !settings.shares.is_empty()
             };
             if auto_start {
                 let _ = commands::start_from_settings(&handle);
