@@ -26,8 +26,12 @@ files to the public internet.
   are refused.
 - **Writes** are limited to uploads into `<first folder>/uploads/`: no delete,
   rename or overwrite. Uploads are
-  written to a hidden temp file and renamed into place; name collisions get a
+  written to a hidden temp file and linked into place; name collisions get a
   ` (1)` suffix.
+- **Active content** (HTML, SVG, XML and similar documents a browser can run
+  script in) is always served as a download with `Content-Security-Policy:
+  sandbox` and `X-Content-Type-Options: nosniff`, so an uploaded file cannot
+  execute code on the share's origin.
 
 ## Hardening checklist
 

@@ -339,7 +339,7 @@ function apply(): void {
 }
 
 function isLoopback(url: string): boolean {
-  return url.includes("127.0.0.1") || url.includes("localhost");
+  return url.includes("127.0.0.1") || url.includes("localhost") || url.includes("[::1]");
 }
 
 function selectedUrlValue(): string | null {
@@ -514,7 +514,7 @@ function copyUploadLink(): void {
     apply();
     return;
   }
-  const base = urls.find((value) => !value.includes("127.0.0.1")) ?? urls[0];
+  const base = urls.find((value) => !isLoopback(value)) ?? urls[0];
   void flashCopy(`${base}/?key=${encodeURIComponent(key)}`, elements.shareUploadLink);
 }
 

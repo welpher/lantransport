@@ -4,7 +4,7 @@ Share files across your local network from a small desktop app.
 
 Pick a folder, press **Start sharing**, and anyone on the same Wi‑Fi can open the
 link in a browser to browse and download. Read-only by default. People you give
-an **upload key** to can also drop files into the folder they are viewing.
+an **upload key** can also drop files into the folder they are viewing.
 
 No account, no cloud, no relay: the files never leave your network.
 

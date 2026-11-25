@@ -6,6 +6,9 @@ use crate::server::{ServerHandle, StartError};
 use crate::state::{self, AppState, Snapshot};
 use crate::tray;
 
+/// Shortest browsing password the server will accept.
+pub const MIN_PASSWORD_CHARS: usize = 4;
+
 pub fn notify(app: &AppHandle) {
     let snapshot = state::snapshot(app);
     let _ = app.emit("snapshot", snapshot);
@@ -37,7 +40,12 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
             .settings
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let password = settings.password.clone();
+        // Enforce the same floor the start dialog uses, so a short password
+        // saved via update_password cannot slip through auto-start.
+        let password = settings
+            .password
+            .clone()
+            .filter(|value| value.chars().count() >= MIN_PASSWORD_CHARS);
         (
             settings.shares.clone(),
             settings.port,
@@ -151,7 +159,7 @@ pub fn start_sharing(
         return Err("no_folder".into());
     }
     if let Some(value) = password.as_ref()
-        && value.chars().count() < 4
+        && value.chars().count() < MIN_PASSWORD_CHARS
     {
         return Err("short_password".into());
     }
@@ -297,11 +305,22 @@ pub fn update_password(
         settings.password = password.filter(|value| !value.is_empty());
         settings.clone()
     };
+    // Push it to the live server too, so a password typed while sharing
+    // takes effect immediately instead of after a restart.
+    {
+        let password = settings
+            .password
+            .clone()
+            .filter(|value| value.chars().count() >= MIN_PASSWORD_CHARS);
+        if let Some(server) = state
+            .server
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+        {
+            server.set_password(password);
+        }
+    }
     let _ = settings.save(&app);
     state::snapshot(&app)
-}
-
-#[tauri::command]
-pub fn suggest_port() -> Option<u16> {
-    (8000..=8080).find(|port| std::net::TcpListener::bind(("127.0.0.1", *port)).is_ok())
 }

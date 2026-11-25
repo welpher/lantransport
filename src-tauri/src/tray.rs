@@ -104,9 +104,14 @@ fn copy_link(app: &AppHandle) {
 
 fn share_url(urls: &[String]) -> Option<String> {
     urls.iter()
-        .find(|url| !url.contains("127.0.0.1"))
+        .find(|url| !is_loopback(url))
         .or_else(|| urls.first())
         .cloned()
+}
+
+/// Keep this in step with `isLoopback` in src/main.ts.
+fn is_loopback(url: &str) -> bool {
+    url.contains("127.0.0.1") || url.contains("localhost") || url.contains("[::1]")
 }
 
 fn toggle(app: &AppHandle) {

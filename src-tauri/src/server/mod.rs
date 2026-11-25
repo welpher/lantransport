@@ -9,11 +9,11 @@ pub mod paths;
 pub mod route;
 pub mod upload;
 
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
 
@@ -32,7 +32,7 @@ pub struct Mount {
 pub struct ServerContext {
     pub log: Option<PathBuf>,
     pub mounts: Vec<Mount>,
-    pub auth: auth::Auth,
+    pub auth: RwLock<auth::Auth>,
     pub limiter: auth::AuthLimiter,
     pub upload: RwLock<UploadConfig>,
     pub upload_limiter: auth::AuthLimiter,
@@ -93,6 +93,14 @@ impl ServerHandle {
         if mounts.is_empty() {
             return Err(StartError::InvalidRoot);
         }
+        // A mount nested inside another one is already reachable through its
+        // parent; keeping it would list its contents twice at every level.
+        let roots: Vec<PathBuf> = mounts.iter().map(|mount| mount.dir.clone()).collect();
+        mounts.retain(|mount| {
+            !roots
+                .iter()
+                .any(|root| root != &mount.dir && mount.dir.starts_with(root))
+        });
         let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for mount in &mut mounts {
             let count = seen.entry(mount.label.clone()).or_insert(0);
@@ -123,7 +131,7 @@ impl ServerHandle {
         let context = Arc::new(ServerContext {
             log,
             mounts,
-            auth: auth::Auth::new(password),
+            auth: RwLock::new(auth::Auth::new(password)),
             limiter: auth::AuthLimiter::default(),
             upload: RwLock::new(upload),
             upload_limiter: auth::AuthLimiter::default(),
@@ -169,6 +177,14 @@ impl ServerHandle {
             .write()
             .unwrap_or_else(|error| error.into_inner()) = config;
     }
+
+    pub fn set_password(&self, password: Option<String>) {
+        *self
+            .context
+            .auth
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = auth::Auth::new(password);
+    }
 }
 
 impl Drop for ServerHandle {
@@ -187,6 +203,8 @@ fn accept_loop(
         match listener.accept() {
             Ok((stream, _)) => {
                 if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
+                    let mut stream = stream;
+                    let _ = http::status_line_only(&mut stream, 503);
                     continue;
                 }
                 active.fetch_add(1, Ordering::Relaxed);
@@ -213,6 +231,35 @@ impl Drop for ActiveGuard {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::Relaxed);
     }
+}
+
+/// Consume any request body left on a kept-alive connection. Returns false
+/// when the body cannot be skipped (oversized/undelimited), so the caller
+/// closes the connection instead of parsing the leftover bytes as a request.
+fn discard_body<R: BufRead>(reader: &mut R, request: &http::Request) -> bool {
+    const MAX_DISCARD: u64 = 1024 * 1024;
+    let chunked = request
+        .header("transfer-encoding")
+        .is_some_and(|value| value.to_ascii_lowercase().contains("chunked"));
+    if chunked {
+        // Do not attempt to parse chunk framing here; a stray chunked body is
+        // not worth the parser, just close the connection.
+        return false;
+    }
+    let Some(length) = request
+        .header("content-length")
+        .and_then(|value| value.parse::<u64>().ok())
+    else {
+        return true;
+    };
+    if length == 0 {
+        return true;
+    }
+    if length > MAX_DISCARD {
+        return false;
+    }
+    let mut limited = std::io::Read::take(&mut *reader, length);
+    std::io::copy(&mut limited, &mut std::io::sink()).is_ok()
 }
 
 fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
@@ -263,11 +310,17 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
                 if !keep_alive {
                     break;
                 }
+                if !discard_body(&mut reader, &request) {
+                    break;
+                }
             }
             Err(_) => break,
         }
     }
 }
+
+/// Reused across events so the hot auth-failure path does not re-open the file.
+static LOG_FILE: OnceLock<Mutex<Option<(PathBuf, std::fs::File)>>> = OnceLock::new();
 
 pub fn log_event(ctx: &ServerContext, message: &str) {
     let line = format!(
@@ -277,14 +330,20 @@ pub fn log_event(ctx: &ServerContext, message: &str) {
         message
     );
     if let Some(path) = &ctx.log {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+        let slot = LOG_FILE.get_or_init(|| Mutex::new(None));
+        let mut guard = slot.lock().unwrap_or_else(|error| error.into_inner());
+        if guard.as_ref().is_none_or(|(current, _)| current != path) {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            *guard = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .ok()
+                .map(|file| (path.clone(), file));
         }
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
+        if let Some((_, file)) = guard.as_mut() {
             let _ = file.write_all(line.as_bytes());
         }
     }

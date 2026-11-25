@@ -48,7 +48,8 @@ fn split_credentials(raw: &[u8]) -> Option<(&[u8], &[u8])> {
     Some((&raw[..index], &raw[index + 1..]))
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+/// Compare two secrets without leaking their contents through timing.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }

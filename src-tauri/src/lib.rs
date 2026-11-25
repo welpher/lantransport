@@ -55,7 +55,6 @@ pub fn run() {
             commands::start_sharing,
             commands::stop_sharing,
             commands::update_prefs,
-            commands::suggest_port,
             commands::update_upload,
             commands::update_password,
         ])
