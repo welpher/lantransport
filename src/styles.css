@@ -359,7 +359,7 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 }
 #security { line-height: 1.45; }
 .muted { color: var(--muted); white-space: nowrap; }
-.footer-right { display: flex; align-items: center; gap: 14px; }
+.footer-right { display: flex; align-items: center; justify-content: center; gap: 14px; align-self: center; }
 .footlink { color: var(--muted); text-decoration: none; cursor: pointer; }
 .footlink:hover { color: var(--accent); }
 @media (max-width: 640px) {

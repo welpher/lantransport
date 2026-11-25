@@ -486,8 +486,23 @@ tbody tr:hover { background: var(--row-hover); }
   .list-card td.size, .list-card td.time { display: inline; font-size: 12px; margin-right: 6px; }
   .list-card td.size::after { content: " ·"; color: var(--muted); }
   .list-card td.act { margin-top: 8px; }
-  .list-card td.act { gap: 8px; }
-  .list-card td.act .btn { display: block; flex: 1 1 auto; text-align: center; }
+  .list-card td.act {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .list-card td.act .btn {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 10px;
+  }
+  .list-card td.act .btn:last-child {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
   .list-card .name { flex-wrap: wrap; }
 }
 
