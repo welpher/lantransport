@@ -231,6 +231,7 @@ pub fn render(
       </div>
       <div class="up-status hint" id="up-status"></div>
       <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
+      <button class="btn ghost" id="up-retry" type="button" hidden>{retry}</button>
     </div>
   </div>
 </div>
@@ -241,6 +242,7 @@ pub fn render(
             drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
             key = escape_html(&t("upload.key")),
+            retry = escape_html(&t("upload.retry")),
             clear = escape_html(&t("upload.clear")),
             dropping = escape_html(&t("upload.dropping")),
         )
@@ -735,6 +737,8 @@ const UPLOAD_JS: &str = r#"
   const input = document.getElementById('up-files');
   const keyInput = document.getElementById('up-key');
   const status = document.getElementById('up-status');
+  const retryBtn = document.getElementById('up-retry');
+  let retryFiles = [];
   const progress = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar');
   const storeKey = 'lantransport-upload-key';
@@ -848,6 +852,8 @@ const UPLOAD_JS: &str = r#"
     if (!files.length) return;
     const key = keyInput.value.trim();
     if (!key) { status.textContent = UP_MSG.needKey; keyInput.focus(); return; }
+    retryFiles = [];
+    retryBtn.hidden = true;
     let failed = 0;
     let lastError = '';
     for (let index = 0; index < files.length; index++) {
@@ -857,14 +863,24 @@ const UPLOAD_JS: &str = r#"
       } catch (error) {
         failed++;
         lastError = error.message || UP_MSG.failed;
+        retryFiles.push(files[index]);
         status.textContent = files[index].name + ' · ' + lastError;
       }
     }
-    status.textContent = failed ? lastError : UP_MSG.done;
     progress.hidden = true;
     bar.style.width = '0%';
-    if (!failed) setTimeout(() => location.reload(), 600);
+    if (failed) {
+      status.textContent = failed + ' / ' + files.length + ' · ' + lastError;
+      retryBtn.hidden = false;
+    } else {
+      status.textContent = UP_MSG.done;
+      setTimeout(() => location.reload(), 600);
+    }
   }
+
+  retryBtn.addEventListener('click', () => {
+    if (retryFiles.length) void upload(retryFiles);
+  });
 })();
 "#;
 
