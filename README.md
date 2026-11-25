@@ -29,6 +29,7 @@ No account, no cloud, no relay: the files never leave your network.
   files with the same name are labeled by source folder
 - **Browser UI** for any phone, tablet or computer — no app needed on the other side
 - **Read-only by default**: browse, preview, download; Range requests so downloads resume
+- **Sortable list**: name, size or modified time, ascending or descending
 - **Optional password** for browsing (HTTP Basic, username `share`)
 - **Key-gated uploads**: rotate the key anytime; files land in the first folder's `uploads/`
 - **QR code** for the LAN link, one click to copy
