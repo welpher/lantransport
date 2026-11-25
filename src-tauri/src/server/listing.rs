@@ -145,6 +145,10 @@ pub fn render(
             r#"<div class="card upload" id="up">
   <div class="up-head"><strong>{title}</strong><span class="hint">{hint}</span></div>
   <div class="drop" id="up-drop">
+    <div class="drop-copy">
+      <strong>{drop}</strong>
+      <span class="hint">{hint}</span>
+    </div>
     <button class="btn" id="up-pick" type="button">{choose}</button>
     <input id="up-files" type="file" multiple hidden>
   </div>
@@ -153,9 +157,11 @@ pub fn render(
     <button class="btn ghost" id="up-save" type="button">{save}</button>
   </div>
   <div class="up-status hint" id="up-status"></div>
+  <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
 </div>"#,
             title = escape_html(&t("upload.title")),
             hint = escape_html(&t("upload.hint")),
+            drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
             save = escape_html(&t("upload.save")),
             key = escape_html(&t("upload.key")),
@@ -218,7 +224,7 @@ pub fn render(
   <div class="crumbs">{crumbs}</div>
   <div class="bar"><input type="search" id="q" placeholder="{search}" autocomplete="off"></div>
   {upload_panel}
-  <div class="card">
+  <div class="card list-card">
     <table>
       <thead><tr><th>{name}</th><th>{size}</th><th class="time-head">{modified}</th><th></th></tr></thead>
       <tbody id="list">{rows}{empty}</tbody>
@@ -391,6 +397,22 @@ tbody tr:hover { background: var(--row-hover); }
   th, td { padding: 10px; }
   .time, .time-head { display: none; }
   .size { font-size: 12px; }
+  .list-card { background: transparent; border: none; box-shadow: none; padding: 0; }
+  .list-card table, .list-card tbody, .list-card tr, .list-card td { display: block; }
+  .list-card thead { display: none; }
+  .list-card tr {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .list-card td { padding: 0; border: none; }
+  .list-card td.size, .list-card td.time { display: inline; font-size: 12px; margin-right: 6px; }
+  .list-card td.size::after { content: " ·"; color: var(--muted); }
+  .list-card td.act { margin-top: 8px; }
+  .list-card td.act .btn { display: block; text-align: center; }
+  .list-card .name { flex-wrap: wrap; }
 }
 "#;
 
@@ -399,10 +421,14 @@ const UPLOAD_CSS: &str = r#"
 .up-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .up-head strong { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; font-weight: 600; }
 .drop {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   border: 1.5px dashed var(--line); border-radius: 12px;
-  padding: 16px; transition: border-color .15s, background .15s;
+  padding: 14px 16px; transition: border-color .15s, background .15s;
 }
+.drop-copy { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 2px; }
+.drop-copy strong { font-size: 13.5px; color: var(--text); font-weight: 600; }
+.progress { height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .2s; }
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
 .keyrow { display: flex; gap: 8px; }
 .keyrow input {
@@ -423,6 +449,8 @@ const UPLOAD_JS: &str = r#"
   const keyInput = document.getElementById('up-key');
   const save = document.getElementById('up-save');
   const status = document.getElementById('up-status');
+  const progress = document.getElementById('up-progress');
+  const bar = document.getElementById('up-bar');
     const storeKey = 'lantransport-upload-key';
   const params = new URLSearchParams(location.search);
   const fromUrl = params.get('key');
@@ -448,7 +476,10 @@ const UPLOAD_JS: &str = r#"
       xhr.setRequestHeader('X-Upload-Key', key);
       xhr.upload.onprogress = event => {
         if (event.lengthComputable) {
-          status.textContent = file.name + ' · ' + Math.round(event.loaded / event.total * 100) + '%';
+          const percent = Math.round(event.loaded / event.total * 100);
+          status.textContent = file.name + ' · ' + percent + '%';
+          progress.hidden = false;
+          bar.style.width = percent + '%';
         }
       };
       xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(String(xhr.status)));
@@ -468,6 +499,8 @@ const UPLOAD_JS: &str = r#"
       try { await send(files[index], key); } catch (error) { failed++; }
     }
     status.textContent = failed ? UP_MSG.failed : UP_MSG.done;
+    progress.hidden = true;
+    bar.style.width = '0%';
     if (!failed) setTimeout(() => location.reload(), 600);
   }
 })();

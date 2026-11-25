@@ -96,5 +96,6 @@
   "ui.group_behavior": "Behavior",
   "ui.settings_locked": "Stop sharing to change connection settings.",
   "ui.badge_lan": "LAN",
-  "ui.badge_local": "This Mac"
+  "ui.badge_local": "This Mac",
+  "upload.drop": "Drop files here"
 }
