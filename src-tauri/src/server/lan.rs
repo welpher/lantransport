@@ -2,12 +2,27 @@
 
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 
+const SKIPPED_PREFIXES: &[&str] = &[
+    "lo", "utun", "awdl", "llw", "bridge", "gif", "stf", "anpi", "ap1", "docker", "vmnet",
+    "vmenet", "vboxnet", "tap", "tun",
+];
+
+fn is_virtual(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    SKIPPED_PREFIXES
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+
 pub fn ipv4_addresses() -> Vec<Ipv4Addr> {
     let primary = primary_ipv4();
     let mut addresses = Vec::new();
 
     if let Ok(interfaces) = if_addrs::get_if_addrs() {
         for interface in interfaces {
+            if is_virtual(&interface.name) {
+                continue;
+            }
             if let if_addrs::IfAddr::V4(v4) = interface.addr {
                 let ip = v4.ip;
                 if ip.is_loopback() || ip.is_link_local() || ip.is_unspecified() {
@@ -50,4 +65,20 @@ pub fn urls(port: u16, allow_lan: bool) -> Vec<String> {
         }
     }
     urls
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_virtual_interfaces() {
+        assert!(is_virtual("docker0"));
+        assert!(is_virtual("utun3"));
+        assert!(is_virtual("vmnet8"));
+        assert!(is_virtual("vmenet0"));
+        assert!(!is_virtual("en0"));
+        assert!(!is_virtual("Ethernet"));
+        assert!(!is_virtual("Wi-Fi"));
+    }
 }

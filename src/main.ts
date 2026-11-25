@@ -103,6 +103,7 @@ let tab: "share" | "settings" = "share";
 let busy = false;
 let localError: string | null = null;
 let qrFor: string | null = null;
+let selectedUrl: string | null = null;
 
 const draft = {
   shares: [] as string[],
@@ -313,8 +314,8 @@ function apply(): void {
   renderFolders();
 
   if (running) {
-    const primary = primaryUrl();
-    if (primary) void ensureQr(primary, label.qr);
+    const current = selectedUrlValue();
+    if (current) void ensureQr(current, label.qr);
   }
   document.title = running && snapshot?.port ? `LanTransport · :${snapshot.port}` : "LanTransport";
 }
@@ -323,8 +324,9 @@ function isLoopback(url: string): boolean {
   return url.includes("127.0.0.1") || url.includes("localhost");
 }
 
-function primaryUrl(): string | null {
+function selectedUrlValue(): string | null {
   const urls = snapshot?.urls ?? [];
+  if (selectedUrl && urls.includes(selectedUrl)) return selectedUrl;
   return urls.find((url) => !isLoopback(url)) ?? urls[0] ?? null;
 }
 
@@ -346,15 +348,31 @@ async function ensureQr(url: string, alt: string): Promise<void> {
 
 function renderUrls(): void {
   const urls = snapshot?.urls ?? [];
-  const key = urls.join("|");
+  const current = selectedUrlValue();
+  const key = `${urls.join("|")}#${current ?? ""}`;
   if (elements.urls.dataset.key === key) return;
   elements.urls.dataset.key = key;
   const label = text();
   elements.urls.replaceChildren(
     ...urls.map((url) => {
       const item = document.createElement("li");
+      item.classList.toggle("selected", url === current);
+      item.tabIndex = 0;
+      item.setAttribute("role", "button");
+      item.setAttribute("aria-selected", String(url === current));
+      item.addEventListener("click", (event) => {
+        if ((event.target as HTMLElement).closest("button")) return;
+        selectedUrl = url;
+        apply();
+      });
+      item.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        selectedUrl = url;
+        apply();
+      });
       const text = document.createElement("span");
-      text.className = url === primaryUrl() ? "url primary" : "url";
+      text.className = "url";
       text.textContent = url;
       const badge = document.createElement("span");
       badge.className = "src";
@@ -548,7 +566,7 @@ elements.sponsor.addEventListener("click", (event) => {
   void openUrl("https://github.com/sponsors/welpher");
 });
 elements.open.addEventListener("click", () => {
-  const url = primaryUrl();
+  const url = selectedUrlValue();
   if (url) void openUrl(url);
 });
 elements.allowUploads.addEventListener("change", () => void updateUpload());
