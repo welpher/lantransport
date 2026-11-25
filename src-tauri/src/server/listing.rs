@@ -452,6 +452,7 @@ tbody tr:hover { background: var(--row-hover); }
   border: 1px solid var(--line);
   color: var(--text);
   text-decoration: none;
+  cursor: pointer;
 }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
 .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
