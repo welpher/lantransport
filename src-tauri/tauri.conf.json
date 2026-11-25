@@ -15,9 +15,9 @@
       {
         "title": "LanTransport",
         "width": 820,
-        "height": 780,
+        "height": 820,
         "minWidth": 660,
-        "minHeight": 620,
+        "minHeight": 640,
         "resizable": true,
         "center": true
       }

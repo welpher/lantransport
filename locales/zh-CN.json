@@ -26,7 +26,7 @@
   "ui.regenerate": "换一个",
   "ui.copy_link": "复制上传链接",
   "ui.max_upload": "单个文件上限（MB）",
-  "ui.upload_hint": "把链接和 key 一起发给对方。文件会存到第一个文件夹的 uploads/。",
+  "ui.upload_hint": "文件存到第一个文件夹的 uploads/",
   "ui.security": "拿到链接的人可以浏览和下载；只有拿到上传 key 的人能添加文件，任何人都不能删除或修改。",
   "ui.version": "版本",
   "error.port_in_use": "端口被占用了，换一个端口试试。",

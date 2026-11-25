@@ -189,12 +189,16 @@ function renderFolders(): void {
       row.append(badge);
     }
     const open = document.createElement("button");
-    open.className = "btn ghost";
-    open.textContent = label.reveal;
+    open.className = "icon-btn";
+    open.textContent = "↗";
+    open.title = label.reveal;
+    open.setAttribute("aria-label", label.reveal);
     open.addEventListener("click", () => void revealItemInDir(path));
     const remove = document.createElement("button");
-    remove.className = "btn ghost";
-    remove.textContent = label.remove;
+    remove.className = "icon-btn";
+    remove.textContent = "×";
+    remove.title = label.remove;
+    remove.setAttribute("aria-label", label.remove);
     remove.addEventListener("click", () => {
       draft.shares.splice(index, 1);
       apply();

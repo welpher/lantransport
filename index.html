@@ -26,12 +26,12 @@
         <div id="error" class="error" hidden></div>
 
         <section id="setup-card" class="card">
-          <div class="section-head">
+          <div class="section-head folders-head">
             <h2 id="folders-label"></h2>
             <span class="hint" id="folders-hint"></span>
+            <button id="add-folder" class="btn small" type="button"></button>
           </div>
           <div id="folders" class="folders"></div>
-          <button id="add-folder" class="btn add-folder"></button>
           <div class="grid2">
             <label class="field">
               <span id="port-label"></span>
@@ -42,15 +42,17 @@
               <span id="lan-label"></span>
             </label>
           </div>
-          <label class="field">
-            <span id="password-label"></span>
+          <div class="field">
+            <label for="password" id="password-label"></label>
             <input id="password" type="password" autocomplete="new-password" />
-            <small id="password-hint" class="hint"></small>
-          </label>
-          <label class="check">
-            <input id="remember" type="checkbox" />
-            <span id="remember-label"></span>
-          </label>
+            <div class="field-foot">
+              <small id="password-hint" class="hint"></small>
+              <label class="check compact">
+                <input id="remember" type="checkbox" />
+                <span id="remember-label"></span>
+              </label>
+            </div>
+          </div>
           <button id="primary" class="primary"></button>
         </section>
 
@@ -88,8 +90,6 @@
               <code id="upload-key" class="key"></code>
               <button id="copy-key" class="btn"></button>
               <button id="regen-key" class="btn ghost"></button>
-            </div>
-            <div class="key-row">
               <label class="inline-field">
                 <span id="max-upload-label"></span>
                 <input id="max-upload" type="number" min="1" max="1048576" inputmode="numeric" />

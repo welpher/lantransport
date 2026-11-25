@@ -26,7 +26,7 @@
   "ui.regenerate": "Regenerate",
   "ui.copy_link": "Copy upload link",
   "ui.max_upload": "Max file size (MB)",
-  "ui.upload_hint": "Send the link and key together. Files land in the first folder's uploads/.",
+  "ui.upload_hint": "Files go to the first folder's uploads/",
   "ui.security": "Anyone on this network with the link can browse and download. Only people with the upload key can add files; nothing can be deleted.",
   "ui.version": "Version",
   "error.port_in_use": "That port is taken. Try another one.",
