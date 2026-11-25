@@ -34,7 +34,6 @@ files to the public internet.
 - Share only folders you are comfortable exposing to your network.
 - Set a browsing password on untrusted networks (cafés, hotels, conferences).
 - Rotate the upload key after a one-off exchange.
-- Prefer **Allow LAN access** off when only this machine needs the files.
 - Keep the app updated.
 
 ## Known limits

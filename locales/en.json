@@ -8,7 +8,6 @@
   "ui.reveal": "Open",
   "ui.no_folder": "No folder selected",
   "ui.port": "Port",
-  "ui.lan": "Allow LAN access",
   "ui.password": "Password (optional)",
   "ui.password_hint": "Username is always share",
   "ui.remember": "Remember password",
@@ -95,5 +94,7 @@
   "ui.group_connection": "Connection",
   "ui.group_uploads": "Uploads",
   "ui.group_behavior": "Behavior",
-  "ui.settings_locked": "Stop sharing to change connection settings."
+  "ui.settings_locked": "Stop sharing to change connection settings.",
+  "ui.badge_lan": "LAN",
+  "ui.badge_local": "This Mac"
 }

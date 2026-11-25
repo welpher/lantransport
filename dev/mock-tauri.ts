@@ -10,7 +10,6 @@ const snapshot = {
   settings: {
     shares: ["/Users/me/Downloads", "/Volumes/Photos"],
     port: 8000,
-    allow_lan: true,
     password: null,
     remember_password: false,
     auto_start: false,

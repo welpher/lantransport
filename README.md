@@ -33,6 +33,7 @@ No account, no cloud, no relay: the files never leave your network.
 - **Key-gated uploads**: rotate the key anytime; files land in the first folder's `uploads/`
 - **QR code** for the LAN link, one click to copy
 - **Tray app**: keeps sharing while the window is closed; start/stop from the tray
+- **Always LAN-bound**: the server listens on your local network; there is no local-only mode to misconfigure
 - **Cross-platform**: macOS (Intel & Apple Silicon), Windows, Linux
 - Light/dark follows the system; English and 中文 today, more via [Weblate](docs/TRANSLATING.md)
 - Small installers: the app uses the system webview instead of bundling a browser

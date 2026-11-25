@@ -32,7 +32,7 @@ pub fn upload_config(settings: &crate::settings::Settings) -> UploadConfig {
 
 pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     let state = app.state::<AppState>();
-    let (shares, port, allow_lan, password, upload) = {
+    let (shares, port, password, upload) = {
         let settings = state
             .settings
             .lock()
@@ -45,7 +45,6 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
         (
             settings.shares.clone(),
             settings.port,
-            settings.allow_lan,
             password,
             upload_config(&settings),
         )
@@ -53,7 +52,7 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     if shares.is_empty() {
         return Err("no_folder".into());
     }
-    start_server(app, &shares, port, allow_lan, password, upload)
+    start_server(app, &shares, port, true, password, upload)
 }
 
 fn start_server(
@@ -144,7 +143,6 @@ pub fn start_sharing(
     state: State<'_, AppState>,
     shares: Vec<String>,
     port: u16,
-    allow_lan: bool,
     password: Option<String>,
     remember_password: bool,
 ) -> Result<Snapshot, String> {
@@ -168,7 +166,6 @@ pub fn start_sharing(
             .unwrap_or_else(|error| error.into_inner());
         settings.shares = shares.clone();
         settings.port = port;
-        settings.allow_lan = allow_lan;
         settings.remember_password = remember_password;
         settings.password = if remember_password {
             password.clone()
@@ -186,7 +183,7 @@ pub fn start_sharing(
         &app,
         &shares,
         port,
-        allow_lan,
+        true,
         password,
         upload_config(&settings),
     ) {

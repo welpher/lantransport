@@ -8,7 +8,6 @@
   "ui.reveal": "打开",
   "ui.no_folder": "还没有选择文件夹",
   "ui.port": "端口",
-  "ui.lan": "允许局域网访问",
   "ui.password": "访问口令（可选）",
   "ui.password_hint": "用户名固定为 share",
   "ui.remember": "记住口令",
@@ -95,5 +94,7 @@
   "ui.group_connection": "连接",
   "ui.group_uploads": "上传",
   "ui.group_behavior": "行为",
-  "ui.settings_locked": "停止共享后才能修改连接设置。"
+  "ui.settings_locked": "停止共享后才能修改连接设置。",
+  "ui.badge_lan": "局域网",
+  "ui.badge_local": "本机"
 }

@@ -10,7 +10,6 @@ import { LANGUAGES, detectLocale, normalizeLocale, translate } from "./i18n";
 interface Settings {
   shares: string[];
   port: number;
-  allow_lan: boolean;
   password: string | null;
   remember_password: boolean;
   auto_start: boolean;
@@ -58,8 +57,6 @@ const elements = {
   addFolder: $<HTMLButtonElement>("add-folder"),
   portLabel: $("port-label"),
   port: $<HTMLInputElement>("port"),
-  lanLabel: $("lan-label"),
-  lan: $<HTMLInputElement>("lan"),
   passwordLabel: $("password-label"),
   passwordHint: $("password-hint"),
   password: $<HTMLInputElement>("password"),
@@ -88,7 +85,6 @@ const elements = {
   shareUploadLink: $<HTMLButtonElement>("share-upload-link"),
   stop: $<HTMLButtonElement>("stop"),
   urls: $<HTMLUListElement>("urls"),
-  qrToggle: $<HTMLButtonElement>("qr-toggle"),
   qrWrap: $("qr-wrap"),
   qr: $<HTMLImageElement>("qr"),
   open: $<HTMLButtonElement>("open"),
@@ -106,12 +102,11 @@ let locale = "en";
 let tab: "share" | "settings" = "share";
 let busy = false;
 let localError: string | null = null;
-let qrUrl: string | null = null;
+let qrFor: string | null = null;
 
 const draft = {
   shares: [] as string[],
   port: 8000,
-  allowLan: true,
   password: "",
   remember: false,
 };
@@ -130,7 +125,6 @@ function text() {
     reveal: t("ui.reveal"),
     noFolder: t("ui.no_folder"),
     port: t("ui.port"),
-    lan: t("ui.lan"),
     password: t("ui.password"),
     passwordHint: t("ui.password_hint"),
     remember: t("ui.remember"),
@@ -141,6 +135,8 @@ function text() {
     copied: t("ui.copied"),
     qr: t("ui.qr"),
     open: t("ui.open_browser"),
+    badgeLan: t("ui.badge_lan"),
+    badgeLocal: t("ui.badge_local"),
     autoStart: t("ui.auto_start"),
     tray: t("ui.tray"),
     uploads: t("ui.uploads"),
@@ -171,7 +167,6 @@ function text() {
 function syncInputs(): void {
   const settings = snapshot?.settings;
   elements.port.value = String(settings?.port ?? draft.port);
-  elements.lan.checked = settings?.allow_lan ?? draft.allowLan;
   elements.remember.checked = settings?.remember_password ?? draft.remember;
   elements.password.value = draft.password;
   elements.autoStart.checked = settings?.auto_start ?? false;
@@ -254,7 +249,6 @@ function apply(): void {
   elements.foldersHint.textContent = label.foldersHint;
   elements.addFolder.textContent = label.addFolder;
   elements.portLabel.textContent = label.port;
-  elements.lanLabel.textContent = label.lan;
   elements.passwordLabel.textContent = label.password;
   elements.passwordHint.textContent = label.passwordHint;
   elements.rememberLabel.textContent = label.remember;
@@ -269,7 +263,6 @@ function apply(): void {
   elements.copyShareKey.textContent = label.copyKey;
   elements.shareUploadLink.textContent = label.copyLink;
   elements.stop.textContent = label.stop;
-  elements.qrToggle.textContent = label.qr;
   elements.open.textContent = label.open;
   elements.autoStartLabel.textContent = label.autoStart;
   elements.trayLabel.textContent = label.tray;
@@ -309,7 +302,6 @@ function apply(): void {
   for (const control of [
     elements.addFolder,
     elements.port,
-    elements.lan,
     elements.password,
     elements.remember,
   ]) {
@@ -318,9 +310,38 @@ function apply(): void {
 
   renderUrls();
   renderError();
-
   renderFolders();
+
+  if (running) {
+    const primary = primaryUrl();
+    if (primary) void ensureQr(primary, label.qr);
+  }
   document.title = running && snapshot?.port ? `LanTransport · :${snapshot.port}` : "LanTransport";
+}
+
+function isLoopback(url: string): boolean {
+  return url.includes("127.0.0.1") || url.includes("localhost");
+}
+
+function primaryUrl(): string | null {
+  const urls = snapshot?.urls ?? [];
+  return urls.find((url) => !isLoopback(url)) ?? urls[0] ?? null;
+}
+
+async function ensureQr(url: string, alt: string): Promise<void> {
+  if (qrFor === url && elements.qr.src) return;
+  try {
+    const dataUrl = await QRCode.toDataURL(url, {
+      margin: 1,
+      width: 336,
+      color: { dark: "#101828", light: "#ffffff" },
+    });
+    elements.qr.src = dataUrl;
+    elements.qr.alt = alt;
+    qrFor = url;
+  } catch {
+    qrFor = null;
+  }
 }
 
 function renderUrls(): void {
@@ -328,22 +349,25 @@ function renderUrls(): void {
   const key = urls.join("|");
   if (elements.urls.dataset.key === key) return;
   elements.urls.dataset.key = key;
+  const label = text();
   elements.urls.replaceChildren(
     ...urls.map((url) => {
       const item = document.createElement("li");
       const text = document.createElement("span");
-      text.className = "url";
+      text.className = url === primaryUrl() ? "url primary" : "url";
       text.textContent = url;
+      const badge = document.createElement("span");
+      badge.className = "src";
+      badge.textContent = isLoopback(url) ? label.badgeLocal : label.badgeLan;
       const button = document.createElement("button");
       button.className = "btn copy";
       button.dataset.url = url;
-      button.textContent = t("ui.copy");
-      item.append(text, button);
+      button.textContent = label.copy;
+      item.append(text, badge, button);
       return item;
     }),
   );
-  elements.qrWrap.hidden = true;
-  qrUrl = null;
+  qrFor = null;
 }
 
 function renderError(): void {
@@ -370,7 +394,6 @@ async function start(): Promise<void> {
     snapshot = await invoke<Snapshot>("start_sharing", {
       shares: draft.shares,
       port: Number(elements.port.value),
-      allowLan: elements.lan.checked,
       password: elements.password.value || null,
       rememberPassword: elements.remember.checked,
     });
@@ -461,24 +484,7 @@ function copyUploadLink(): void {
   void flashCopy(`${base}/?key=${encodeURIComponent(key)}`, elements.shareUploadLink);
 }
 
-async function toggleQr(): Promise<void> {
-  if (qrUrl) {
-    elements.qrWrap.hidden = true;
-    qrUrl = null;
-    return;
-  }
-  const urls = snapshot?.urls ?? [];
-  const url = urls.find((value) => !value.includes("127.0.0.1")) ?? urls[0];
-  if (!url) return;
-  const dataUrl = await QRCode.toDataURL(url, {
-    margin: 1,
-    width: 416,
-    color: { dark: "#101828", light: "#ffffff" },
-  });
-  elements.qr.src = dataUrl;
-  elements.qrWrap.hidden = false;
-  qrUrl = url;
-}
+
 
 async function boot(): Promise<void> {
   snapshot = await invoke<Snapshot>("get_snapshot");
@@ -486,7 +492,6 @@ async function boot(): Promise<void> {
   locale = stored === "auto" ? detectLocale() : normalizeLocale(stored);
   draft.shares = [...snapshot.settings.shares];
   draft.port = snapshot.settings.port;
-  draft.allowLan = snapshot.settings.allow_lan;
   draft.password = snapshot.settings.password ?? "";
   draft.remember = snapshot.settings.remember_password;
 
@@ -542,9 +547,8 @@ elements.sponsor.addEventListener("click", (event) => {
   event.preventDefault();
   void openUrl("https://github.com/sponsors/welpher");
 });
-elements.qrToggle.addEventListener("click", () => void toggleQr());
 elements.open.addEventListener("click", () => {
-  const url = snapshot?.urls.find((value) => !value.includes("127.0.0.1")) ?? snapshot?.urls[0];
+  const url = primaryUrl();
   if (url) void openUrl(url);
 });
 elements.allowUploads.addEventListener("change", () => void updateUpload());
