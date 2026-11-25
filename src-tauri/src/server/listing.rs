@@ -132,7 +132,7 @@ pub fn render(
     for entry in &dirs {
         let name = escape_html(&entry.name);
         rows.push_str(&format!(
-            "<tr class='dir' data-name='{}' data-href='{}/'><td><div class='name'><span class='ext'>DIR</span><a href='{}/'>{}/</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
+            "<tr class='dir' data-kind='dir' data-name='{}' data-href='{}/'><td><div class='name'><span class='ext'>DIR</span><a href='{}/'>{}/</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
             escape_html(&entry.name.to_lowercase()),
             encode_segment(&entry.name),
             encode_segment(&entry.name),
@@ -170,9 +170,12 @@ pub fn render(
                 || "—".to_string(),
                 |time| time.format("%Y-%m-%d %H:%M").to_string(),
             );
+            let epoch = file.modified.map(|time| time.timestamp()).unwrap_or(0);
             rows.push_str(&format!(
-                "<tr data-name='{}' data-href='{download}'><td><div class='name'><span class='ext'>{}</span><span class='fname'>{}</span>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'>{preview}<a class='btn' href='{download}'>{}</a></td></tr>",
+                "<tr data-kind='file' data-name='{}' data-size='{}' data-time='{}' data-href='{download}'><td><div class='name'><span class='ext'>{}</span><span class='fname'>{}</span>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'>{preview}<a class='btn' href='{download}'>{}</a></td></tr>",
                 escape_html(&entry.name.to_lowercase()),
+                file.size,
+                epoch,
                 escape_html(&ext_label(&entry.name, false)),
                 escape_html(&entry.name),
                 human_size(file.size),
@@ -301,10 +304,20 @@ pub fn render(
   <h1>{title}</h1>
   <div class="meta">{items} · {total}</div>
   <div class="crumbs">{crumbs}</div>
-  <div class="bar"><input type="search" id="q" placeholder="{search}" autocomplete="off"></div>
+  <div class="bar">
+    <input type="search" id="q" placeholder="{search}" autocomplete="off">
+    <select id="sort-select" class="sort-select" aria-label="{sort_label}">
+      <option value="name:asc">{name} ↑</option>
+      <option value="name:desc">{name} ↓</option>
+      <option value="size:asc">{size} ↑</option>
+      <option value="size:desc">{size} ↓</option>
+      <option value="time:asc">{modified} ↑</option>
+      <option value="time:desc">{modified} ↓</option>
+    </select>
+  </div>
   <div class="card list-card">
     <table>
-      <thead><tr><th>{name}</th><th>{size}</th><th class="time-head">{modified}</th><th></th></tr></thead>
+      <thead><tr><th><button class="sort" type="button" data-sort="name">{name}</button></th><th><button class="sort" type="button" data-sort="size">{size}</button></th><th class="time-head"><button class="sort" type="button" data-sort="time">{modified}</button></th><th></th></tr></thead>
       <tbody id="list">{rows}{empty}</tbody>
     </table>
   </div>
@@ -337,6 +350,48 @@ document.querySelectorAll('#list tr[data-href]').forEach(row => {{
     window.location.href = row.getAttribute('data-href');
   }});
 }});
+const sortSelect = document.getElementById('sort-select');
+const state = {{ key: 'name', dir: 'asc' }};
+const groups = {{ parent: [], dir: [], file: [] }};
+rows.forEach(row => {{
+  const kind = row.dataset.kind || 'file';
+  groups[kind].push(row);
+}});
+const compare = (a, b) => {{
+  const sign = state.dir === 'desc' ? -1 : 1;
+  if (state.key === 'size' || state.key === 'time') {{
+    const left = Number(a.dataset[state.key]);
+    const right = Number(b.dataset[state.key]);
+    if (Number.isFinite(left) && Number.isFinite(right)) return (left - right) * sign;
+  }}
+  return a.dataset.name.localeCompare(b.dataset.name, undefined, {{ numeric: true }}) * sign;
+}};
+const applySort = (key, dir) => {{
+  state.key = key;
+  state.dir = dir;
+  const body = document.getElementById('list');
+  body.replaceChildren(...groups.parent, ...groups.dir.slice().sort(compare), ...groups.file.slice().sort(compare));
+  document.querySelectorAll('th .sort').forEach(button => {{
+    const active = button.dataset.sort === key;
+    button.classList.toggle('active', active);
+    button.dataset.dir = active ? dir : '';
+  }});
+  if (sortSelect) sortSelect.value = key + ':' + dir;
+}};
+document.querySelectorAll('th .sort').forEach(button => {{
+  button.addEventListener('click', () => {{
+    const key = button.dataset.sort;
+    const dir = state.key === key ? (state.dir === 'asc' ? 'desc' : 'asc') : (key === 'name' ? 'asc' : 'desc');
+    applySort(key, dir);
+  }});
+}});
+if (sortSelect) {{
+  sortSelect.value = 'name:asc';
+  sortSelect.addEventListener('change', () => {{
+    const [key, dir] = sortSelect.value.split(':');
+    applySort(key, dir);
+  }});
+}}
 const lang = document.getElementById('lang');
 if (lang) {{
   if (new URLSearchParams(location.search).get('lang')) {{
@@ -360,6 +415,7 @@ if (lang) {{
         total = escape_html(&total),
         crumbs = crumbs,
         search = escape_html(&t("page.search")),
+        sort_label = escape_html(&t("page.sort")),
         name = escape_html(&t("page.col.name")),
         size = escape_html(&t("page.col.size")),
         modified = escape_html(&t("page.col.modified")),
@@ -435,6 +491,12 @@ input[type=search]:focus { border-color: var(--accent); }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--line); }
 th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+th .sort { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; user-select: none; }
+th .sort:hover { color: var(--accent); }
+th .sort.active { color: var(--accent); }
+th .sort.active::after { content: " ↑"; }
+th .sort.active[data-dir="desc"]::after { content: " ↓"; }
+.sort-select { display: none; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--row-hover); }
 #list tr[data-href] { cursor: pointer; }
@@ -519,6 +581,15 @@ tbody tr:hover { background: var(--row-hover); }
     font-weight: 600;
   }
   .list-card .name { flex-wrap: wrap; }
+  .sort-select {
+    display: block;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--card);
+    color: var(--text);
+    font-size: 16px;
+  }
   input[type="search"] {
     font-size: 16px;
   }
