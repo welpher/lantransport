@@ -97,5 +97,9 @@
   "ui.settings_locked": "Stop sharing to change connection settings.",
   "ui.badge_lan": "LAN",
   "ui.badge_local": "This Mac",
-  "upload.drop": "Drop files here"
+  "upload.drop": "Drop files here",
+  "upload.open": "Upload",
+  "upload.close": "Close",
+  "upload.dropping": "Drop files to upload",
+  "page.all_files": "Shared files"
 }

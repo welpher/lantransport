@@ -140,31 +140,48 @@ pub fn render(
         ));
     }
 
-    let upload_panel = if uploads {
+    let upload_button = if uploads {
         format!(
-            r#"<div class="card upload" id="up">
-  <div class="up-head"><strong>{title}</strong><span class="hint">{hint}</span></div>
-  <div class="drop" id="up-drop">
-    <div class="drop-copy">
-      <strong>{drop}</strong>
-      <span class="hint">{hint}</span>
+            r#"<button class="btn up-btn" id="up-open" type="button">{}</button>"#,
+            escape_html(&t("upload.open"))
+        )
+    } else {
+        String::new()
+    };
+
+    let upload_modal = if uploads {
+        format!(
+            r#"<div class="modal" id="up-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="{title}">
+    <div class="modal-head">
+      <strong>{title}</strong>
+      <button class="icon-x" id="up-close" type="button" aria-label="{close}">×</button>
     </div>
-    <button class="btn" id="up-pick" type="button">{choose}</button>
-    <input id="up-files" type="file" multiple hidden>
+    <div class="drop" id="up-drop">
+      <div class="drop-copy">
+        <strong>{drop}</strong>
+        <span class="hint">{hint}</span>
+      </div>
+      <button class="btn" id="up-pick" type="button">{choose}</button>
+      <input id="up-files" type="file" multiple hidden>
+    </div>
+    <div class="keyrow">
+      <input id="up-key" type="password" placeholder="{key}" autocomplete="off" spellcheck="false">
+      <button class="btn ghost" id="up-save" type="button">{save}</button>
+    </div>
+    <div class="up-status hint" id="up-status"></div>
+    <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
   </div>
-  <div class="keyrow">
-    <input id="up-key" type="password" placeholder="{key}" autocomplete="off" spellcheck="false">
-    <button class="btn ghost" id="up-save" type="button">{save}</button>
-  </div>
-  <div class="up-status hint" id="up-status"></div>
-  <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
-</div>"#,
+</div>
+<div class="drop-overlay" id="up-overlay" hidden><span>{dropping}</span></div>"#,
             title = escape_html(&t("upload.title")),
+            close = escape_html(&t("upload.close")),
             hint = escape_html(&t("upload.hint")),
             drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
             save = escape_html(&t("upload.save")),
             key = escape_html(&t("upload.key")),
+            dropping = escape_html(&t("upload.dropping")),
         )
     } else {
         String::new()
@@ -217,20 +234,24 @@ pub fn render(
 <style>{STYLE}{UPLOAD_CSS}</style>
 <div class="wrap">
   <div class="top">
-    <h1>{title}</h1>
-    <select id="lang" aria-label="{lang_label}">{lang_options}</select>
+    <a class="brand" href="/">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.2l2 2h6.8A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-11z"/></svg>
+      LanTransport
+    </a>
+    <div class="top-actions">{upload_button}<select id="lang" aria-label="{lang_label}">{lang_options}</select></div>
   </div>
+  <h1>{title}</h1>
   <div class="meta">{items} · {total}</div>
   <div class="crumbs">{crumbs}</div>
   <div class="bar"><input type="search" id="q" placeholder="{search}" autocomplete="off"></div>
-  {upload_panel}
   <div class="card list-card">
     <table>
       <thead><tr><th>{name}</th><th>{size}</th><th class="time-head">{modified}</th><th></th></tr></thead>
       <tbody id="list">{rows}{empty}</tbody>
     </table>
   </div>
-  <div class="foot" id="foot">{footer} · <a class="brand" href="https://github.com/welpher/lantransport" target="_blank" rel="noreferrer noopener">LanTransport</a></div>
+  {upload_modal}
+  <div class="foot" id="foot">{footer} · <a class="foot-brand" href="https://github.com/welpher/lantransport" target="_blank" rel="noreferrer noopener">LanTransport</a></div>
 </div>
 <script nonce="{nonce}">
 {upload_strings}
@@ -283,7 +304,8 @@ if (lang) {{
         footer = escape_html(&t(footer_key)),
         filtered = filtered,
         nonce = escape_html(nonce),
-        upload_panel = upload_panel,
+        upload_modal = upload_modal,
+        upload_button = upload_button,
         upload_strings = upload_strings,
         STYLE = STYLE,
         UPLOAD_CSS = UPLOAD_CSS,
@@ -317,6 +339,7 @@ pub const STYLE: &str = r#"
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   padding: 24px 16px 48px;
@@ -441,8 +464,11 @@ const UPLOAD_CSS: &str = r#"
 
 const UPLOAD_JS: &str = r#"
 (function () {
-  const box = document.getElementById('up');
-  if (!box) return;
+  const modal = document.getElementById('up-modal');
+  if (!modal) return;
+  const openBtn = document.getElementById('up-open');
+  const closeBtn = document.getElementById('up-close');
+  const overlay = document.getElementById('up-overlay');
   const drop = document.getElementById('up-drop');
   const pick = document.getElementById('up-pick');
   const input = document.getElementById('up-files');
@@ -451,7 +477,7 @@ const UPLOAD_JS: &str = r#"
   const status = document.getElementById('up-status');
   const progress = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar');
-    const storeKey = 'lantransport-upload-key';
+  const storeKey = 'lantransport-upload-key';
   const params = new URLSearchParams(location.search);
   const fromUrl = params.get('key');
   if (fromUrl) {
@@ -460,13 +486,64 @@ const UPLOAD_JS: &str = r#"
   }
   try { keyInput.value = localStorage.getItem(storeKey) || ''; } catch (e) {}
   const remember = () => { try { localStorage.setItem(storeKey, keyInput.value.trim()); } catch (e) {} };
-  if (save) save.addEventListener('click', remember);
+  save.addEventListener('click', remember);
   keyInput.addEventListener('change', remember);
+
+  const openModal = () => {
+    modal.hidden = false;
+    if (!keyInput.value.trim()) keyInput.focus();
+  };
+  const closeModal = () => { modal.hidden = true; };
+  openBtn.addEventListener('click', openModal);
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !modal.hidden) closeModal(); });
+
   pick.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => { const files = Array.from(input.files || []); input.value = ''; upload(files); });
-  ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', event => upload(Array.from(event.dataTransfer.files || [])));
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files || []);
+    input.value = '';
+    upload(files);
+  });
+
+  const hasFiles = (event) => Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
+  let depth = 0;
+  document.addEventListener('dragenter', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    depth++;
+    overlay.hidden = false;
+  });
+  document.addEventListener('dragover', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  document.addEventListener('dragleave', (event) => {
+    if (!hasFiles(event)) return;
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) overlay.hidden = true;
+  });
+  document.addEventListener('drop', (event) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    depth = 0;
+    overlay.hidden = true;
+    const files = Array.from(event.dataTransfer.files || []);
+    if (!files.length) return;
+    openModal();
+    upload(files);
+  });
+
+  drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    drop.classList.remove('over');
+    const files = Array.from(event.dataTransfer.files || []);
+    if (files.length) upload(files);
+  });
 
   function send(file, key) {
     return new Promise((resolve, reject) => {

@@ -97,5 +97,9 @@
   "ui.settings_locked": "停止共享后才能修改连接设置。",
   "ui.badge_lan": "局域网",
   "ui.badge_local": "本机",
-  "upload.drop": "把文件拖到这里"
+  "upload.drop": "把文件拖到这里",
+  "upload.open": "上传",
+  "upload.close": "关闭",
+  "upload.dropping": "松开即可上传",
+  "page.all_files": "共享文件"
 }

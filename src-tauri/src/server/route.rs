@@ -186,7 +186,7 @@ fn serve_listing(
         .header(
             "Content-Security-Policy",
             format!(
-                "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
             ),
         )
         .header("Referrer-Policy", "no-referrer")
