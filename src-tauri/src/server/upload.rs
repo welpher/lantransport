@@ -50,8 +50,8 @@ pub fn handle<R: BufRead>(
         .header("x-upload-key")
         .map(str::to_string)
         .or_else(|| query_param(&request.target, "key"));
-    let allowed =
-        supplied.is_some_and(|key| constant_time_eq(key.as_bytes(), config.key.as_bytes()));
+    let allowed = supplied
+        .is_some_and(|key| super::auth::constant_time_eq(key.as_bytes(), config.key.as_bytes()));
     if !allowed {
         ctx.upload_limiter.note_failure(peer);
         super::log_event(ctx, &format!("upload denied peer={peer} reason=wrong_key"));
@@ -111,7 +111,6 @@ pub fn handle<R: BufRead>(
         ),
     );
 
-    let target = unique_target(&directory, &name);
     let temp = temp_path(&directory);
     let mut file = match File::create_new(&temp) {
         Ok(file) => file,
@@ -159,10 +158,10 @@ pub fn handle<R: BufRead>(
     }
     drop(file);
 
-    if fs::rename(&temp, &target).is_err() {
+    let Some(target) = commit(&temp, &directory, &name) else {
         let _ = fs::remove_file(&temp);
         return fail(500, locale, "upload.err.write");
-    }
+    };
 
     let saved = target
         .file_name()
@@ -321,11 +320,12 @@ fn safe_file_name(raw: &str) -> Option<String> {
     Some(name.to_string())
 }
 
-fn unique_target(directory: &Path, name: &str) -> PathBuf {
-    let candidate = directory.join(name);
-    if fs::symlink_metadata(&candidate).is_err() {
-        return candidate;
-    }
+/// Move the finished temp file into place without ever replacing an existing
+/// name. `hard_link` fails with `AlreadyExists` when the name is taken, so the
+/// claim is atomic and two concurrent uploads of the same name get distinct
+/// paths. Filesystems without hard links (exFAT, FAT32, ...) fall back to a
+/// `create_new` claim plus a copy.
+fn commit(temp: &Path, directory: &Path, name: &str) -> Option<PathBuf> {
     let path = Path::new(name);
     let stem = path
         .file_stem()
@@ -335,13 +335,42 @@ fn unique_target(directory: &Path, name: &str) -> PathBuf {
         .extension()
         .map(|value| format!(".{}", value.to_string_lossy()))
         .unwrap_or_default();
-    for index in 1..10_000 {
-        let candidate = directory.join(format!("{stem} ({index}){extension}"));
-        if fs::symlink_metadata(&candidate).is_err() {
-            return candidate;
+    let mut supports_links = true;
+    for index in 0..10_000 {
+        let candidate = if index == 0 {
+            directory.join(name)
+        } else {
+            directory.join(format!("{stem} ({index}){extension}"))
+        };
+        if supports_links {
+            match fs::hard_link(temp, &candidate) {
+                Ok(()) => {
+                    let _ = fs::remove_file(temp);
+                    return Some(candidate);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => supports_links = false,
+            }
+        }
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(handle) => {
+                drop(handle);
+                if fs::copy(temp, &candidate).is_err() {
+                    let _ = fs::remove_file(&candidate);
+                    return None;
+                }
+                let _ = fs::remove_file(temp);
+                return Some(candidate);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
         }
     }
-    directory.join(format!("{stem}-{}{extension}", std::process::id()))
+    None
 }
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -352,13 +381,6 @@ fn temp_path(directory: &Path) -> PathBuf {
         ".lantransport-{}-{counter}.part",
         std::process::id()
     ))
-}
-
-pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 fn serde_json_string(value: &str) -> String {
@@ -397,5 +419,59 @@ mod tests {
         assert_eq!(values[0], ("dir".into(), "/sub/".into()));
         assert_eq!(values[1], ("name".into(), "a b.txt".into()));
         assert_eq!(values[2], ("key".into(), "x".into()));
+    }
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("lantransport-commit-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn commit_never_replaces_an_existing_name() {
+        let dir = scratch_dir("collide");
+        fs::write(dir.join("note.txt"), b"original").unwrap();
+        let temp = temp_path(&dir);
+        fs::write(&temp, b"newcomer").unwrap();
+
+        let saved = commit(&temp, &dir, "note.txt").expect("committed");
+        assert_eq!(saved.file_name().unwrap(), "note (1).txt");
+        assert_eq!(
+            fs::read_to_string(dir.join("note.txt")).unwrap(),
+            "original"
+        );
+        assert_eq!(fs::read_to_string(&saved).unwrap(), "newcomer");
+        assert!(!temp.exists(), "temp file must be cleaned up");
+    }
+
+    #[test]
+    fn concurrent_commits_each_keep_their_bytes() {
+        let dir = scratch_dir("race");
+        let payloads: Vec<String> = (0..16).map(|tag| format!("{tag:0>64}")).collect();
+        let handles: Vec<_> = payloads
+            .iter()
+            .cloned()
+            .map(|payload| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    let temp = temp_path(&dir);
+                    fs::write(&temp, payload.as_bytes()).unwrap();
+                    commit(&temp, &dir, "race.txt")
+                })
+            })
+            .collect();
+
+        let mut saved = Vec::new();
+        for handle in handles {
+            let path = handle.join().unwrap().expect("commit");
+            saved.push(fs::read_to_string(path).unwrap());
+        }
+        saved.sort();
+        let mut expected = payloads;
+        expected.sort();
+        assert_eq!(saved, expected, "no upload may be overwritten");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 16);
     }
 }

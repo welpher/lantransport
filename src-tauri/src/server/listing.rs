@@ -49,7 +49,8 @@ pub fn previewable(name: &str) -> bool {
             | "webp"
             | "avif"
             | "bmp"
-            | "svg"
+            // SVG is served as a download because browsers can run script in
+            // it, so an inline "preview" would just download the file.
             | "pdf"
             | "mp4"
             | "webm"
@@ -97,15 +98,23 @@ pub fn render(
 
     let mut rows = String::new();
     if url_path != "/" {
-        let parent = url_path
+        // Build the parent href from encoded segments, like every other link:
+        // the incoming url_path is already decoded, so names with '#' or '%'
+        // would otherwise produce a link the browser mis-parses.
+        let mut parent = String::new();
+        let parts: Vec<&str> = url_path
             .trim_end_matches('/')
-            .rsplit_once('/')
-            .map_or("/", |(head, _)| head);
-        let parent = if parent.is_empty() { "/" } else { parent };
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .collect();
+        for part in parts.iter().take(parts.len().saturating_sub(1)) {
+            parent.push('/');
+            parent.push_str(&encode_segment(part));
+        }
+        parent.push('/');
         rows.push_str(&format!(
-            "<tr class='dir' data-name='..' data-href='{}'><td><div class='name'><span class='ext'>DIR</span><a href='{}'>..</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
-            escape_html(&format!("{}/", parent.trim_end_matches('/'))),
-            escape_html(&format!("{}/", parent.trim_end_matches('/')))
+            "<tr class='dir' data-name='..' data-href='{parent}'><td><div class='name'><span class='ext'>DIR</span><a href='{parent}'>..</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
+            parent = escape_html(&parent)
         ));
     }
 

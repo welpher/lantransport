@@ -265,7 +265,9 @@ pub fn status_line_only(stream: &mut TcpStream, status: u16) -> io::Result<()> {
 pub fn reason(status: u16) -> &'static str {
     match status {
         200 => "OK",
+        201 => "Created",
         204 => "No Content",
+        206 => "Partial Content",
         301 => "Moved Permanently",
         304 => "Not Modified",
         400 => "Bad Request",
@@ -273,6 +275,8 @@ pub fn reason(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        411 => "Length Required",
+        413 => "Content Too Large",
         414 => "URI Too Long",
         416 => "Range Not Satisfiable",
         429 => "Too Many Requests",

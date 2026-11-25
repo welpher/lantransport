@@ -78,6 +78,18 @@ fn send(port: u16, raw: &str) -> Reply {
     );
 }
 
+/// Send a raw request and return the full (possibly pipelined) response text.
+fn raw_send(port: u16, raw: &str) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("timeout");
+    stream.write_all(raw.as_bytes()).expect("write");
+    let mut reply = Vec::new();
+    stream.read_to_end(&mut reply).expect("read");
+    String::from_utf8_lossy(&reply).into_owned()
+}
+
 fn try_send(port: u16, raw: &str) -> std::io::Result<Reply> {
     let mut stream = TcpStream::connect(("127.0.0.1", port))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
@@ -457,4 +469,119 @@ fn rejects_oversized_chunked_uploads() {
     );
     assert_eq!(send(server.port, &raw).status, 413);
     assert!(!root.join("uploads/big.txt").exists());
+}
+
+#[test]
+fn serves_html_and_svg_as_forced_downloads() {
+    let root = temp_root("active-content");
+    std::fs::write(root.join("page.html"), b"<script>alert(1)</script>").unwrap();
+    std::fs::write(
+        root.join("pic.svg"),
+        b"<svg xmlns='http://www.w3.org/2000/svg'/>",
+    )
+    .unwrap();
+    let server = start(&root, None);
+
+    for name in ["page.html", "pic.svg"] {
+        let reply = get(server.port, &format!("/{name}"));
+        assert_eq!(reply.status, 200, "{name}");
+        assert!(
+            reply
+                .header("content-disposition")
+                .is_some_and(|value| value.starts_with("attachment;")),
+            "{name} should be an attachment"
+        );
+        assert_eq!(
+            reply.header("content-security-policy"),
+            Some("sandbox; default-src 'none'"),
+            "{name} should be sandboxed"
+        );
+    }
+
+    // Ordinary images stay inline so previews keep working.
+    std::fs::write(root.join("ok.png"), b"png").unwrap();
+    let reply = get(server.port, "/ok.png");
+    assert_eq!(reply.status, 200);
+    assert!(reply.header("content-disposition").is_none());
+}
+
+#[test]
+fn parent_link_percent_encodes_names() {
+    let root = temp_root("parent-link");
+    std::fs::create_dir_all(root.join("a#b/deep")).unwrap();
+    let server = start(&root, None);
+    let page = get(server.port, "/a%23b/deep/").text();
+    assert!(page.contains("data-href='/a%23b/'"), "got: {page}");
+    assert!(!page.contains("data-href='/a#b/'"));
+}
+
+#[test]
+fn keep_alive_survives_requests_with_bodies() {
+    let root = temp_root("drain");
+    let server = start(&root, None);
+    // The 405 must not leave the POST body behind to be parsed as a request.
+    let raw = "POST / HTTP/1.1\r\nHost: test\r\nContent-Length: 5\r\n\r\nhelloGET /hello.txt HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n";
+    let text = raw_send(server.port, raw);
+    assert!(text.contains("HTTP/1.1 405"), "got: {text}");
+    assert!(
+        text.contains("HTTP/1.1 200"),
+        "second request dropped: {text}"
+    );
+    assert!(text.ends_with("hello"), "got: {text}");
+}
+
+#[test]
+fn nested_share_roots_are_not_listed_twice() {
+    let root = temp_root("nested");
+    let nested = root.join("sub");
+    let server = start_many(&[&root, &nested], None, UploadConfig::default());
+    let page = get(server.port, "/").text();
+    assert_eq!(
+        page.matches("data-name='nested.bin'").count(),
+        0,
+        "nested contents must not be flattened into the parent listing"
+    );
+    let sub = get(server.port, "/sub/").text();
+    assert_eq!(sub.matches("data-name='nested.bin'").count(), 1);
+}
+
+#[test]
+fn password_change_applies_to_a_running_server() {
+    let root = temp_root("password-change");
+    let server = start(&root, Some("old-pass"));
+    assert_eq!(
+        send(
+            server.port,
+            &format!(
+                "GET / HTTP/1.1\r\nHost: test\r\nAuthorization: Basic {}\r\nConnection: close\r\n\r\n",
+                base64("share:old-pass")
+            ),
+        )
+        .status,
+        200
+    );
+
+    server.set_password(Some("new-pass".into()));
+    assert_eq!(
+        send(
+            server.port,
+            &format!(
+                "GET / HTTP/1.1\r\nHost: test\r\nAuthorization: Basic {}\r\nConnection: close\r\n\r\n",
+                base64("share:old-pass")
+            ),
+        )
+        .status,
+        401
+    );
+    assert_eq!(
+        send(
+            server.port,
+            &format!(
+                "GET / HTTP/1.1\r\nHost: test\r\nAuthorization: Basic {}\r\nConnection: close\r\n\r\n",
+                base64("share:new-pass")
+            ),
+        )
+        .status,
+        200
+    );
 }

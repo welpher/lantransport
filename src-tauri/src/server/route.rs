@@ -37,18 +37,21 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         return Response::empty(204);
     }
 
-    if ctx.auth.required() {
-        if let Some(seconds) = ctx.limiter.blocked_for(peer) {
-            return simple(429, locale).header("Retry-After", seconds.to_string());
+    {
+        let auth = ctx.auth.read().unwrap_or_else(|error| error.into_inner());
+        if auth.required() {
+            if let Some(seconds) = ctx.limiter.blocked_for(peer) {
+                return simple(429, locale).header("Retry-After", seconds.to_string());
+            }
+            if !auth.check(request.header("authorization")) {
+                ctx.limiter.note_failure(peer);
+                return Response::html(401, login_page(locale)).header(
+                    "WWW-Authenticate",
+                    "Basic realm=\"LanTransport\", charset=\"UTF-8\"",
+                );
+            }
+            ctx.limiter.note_success(peer);
         }
-        if !ctx.auth.check(request.header("authorization")) {
-            ctx.limiter.note_failure(peer);
-            return Response::html(401, login_page(locale)).header(
-                "WWW-Authenticate",
-                "Basic realm=\"LanTransport\", charset=\"UTF-8\"",
-            );
-        }
-        ctx.limiter.note_success(peer);
     }
 
     let Some(segments) = paths::segments(&decoded) else {
@@ -218,6 +221,11 @@ fn serve_file(
     }
 
     let content_type = content_type_for(path);
+    // Browsers can execute script in HTML/SVG (and legacy XML) documents; a
+    // key holder could upload one to run code on this origin against other
+    // visitors, so those are only ever offered as downloads.
+    let inline_safe = !active_content(path, &content_type);
+    let as_attachment = as_attachment || !inline_safe;
     let mut response = match parse_range(request.header("range"), size) {
         RangeOutcome::Unsatisfiable => {
             return Response::empty(416).header("Content-Range", format!("bytes */{size}"));
@@ -258,7 +266,29 @@ fn serve_file(
             .unwrap_or_else(|| "download".into());
         response = response.header("Content-Disposition", content_disposition(&name));
     }
+    if !inline_safe {
+        response = response
+            .header("Content-Security-Policy", "sandbox; default-src 'none'")
+            .header("X-Content-Type-Options", "nosniff");
+    }
     response
+}
+
+/// Types a browser would treat as a document that can run script.
+fn active_content(path: &Path, content_type: &str) -> bool {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "html" | "htm" | "xhtml" | "shtml" | "svg" | "xml" | "xsl" | "xslt" | "mht" | "mhtml"
+    ) || content_type.starts_with("text/html")
+        || content_type.starts_with("application/xhtml")
+        || content_type.starts_with("image/svg")
+        || content_type.starts_with("application/xml")
+        || content_type.starts_with("text/xml")
 }
 
 fn content_type_for(path: &Path) -> String {
@@ -302,12 +332,19 @@ static NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn nonce() -> String {
     use std::hash::{BuildHasher, Hasher};
-    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-    hasher.write_u64(NONCE_COUNTER.fetch_add(1, Ordering::Relaxed));
-    hasher.write_u128(
+    let mut first = std::collections::hash_map::RandomState::new().build_hasher();
+    first.write_u64(NONCE_COUNTER.fetch_add(1, Ordering::Relaxed));
+    first.write_u128(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos()),
     );
-    format!("{:x}{:x}", hasher.finish(), hasher.finish())
+    let mut second = std::collections::hash_map::RandomState::new().build_hasher();
+    second.write_u64(first.finish());
+    second.write_u128(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos()),
+    );
+    format!("{:x}{:x}", first.finish(), second.finish())
 }
