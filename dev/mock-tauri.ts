@@ -26,8 +26,18 @@ const snapshot = {
   last_error: null,
 };
 
+let snapshotCalls = 0;
+
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (command === "get_snapshot") return structuredClone(snapshot) as T;
+  if (command === "get_snapshot") {
+    if (params.get("rotate") === "1" && snapshot.running) {
+      snapshotCalls++;
+      snapshot.urls = snapshotCalls <= 1
+        ? ["http://127.0.0.1:8000", "http://192.168.1.24:8000"]
+        : ["http://127.0.0.1:8000", "http://10.0.0.9:8000"];
+    }
+    return structuredClone(snapshot) as T;
+  }
   if (command === "update_password") {
     snapshot.settings.password = (args?.password as string | null) ?? null;
     return structuredClone(snapshot) as T;

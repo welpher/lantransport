@@ -70,7 +70,11 @@ pub fn snapshot(app: &AppHandle) -> Snapshot {
         Some(server) => (
             true,
             Some(server.port),
-            server.urls.clone(),
+            server
+                .urls
+                .read()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone(),
             server
                 .started_at
                 .duration_since(std::time::UNIX_EPOCH)

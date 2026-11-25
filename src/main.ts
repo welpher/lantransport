@@ -82,6 +82,7 @@ const elements = {
   copyShareKey: $<HTMLButtonElement>("copy-share-key"),
   shareUploadLink: $<HTMLButtonElement>("share-upload-link"),
   urls: $<HTMLUListElement>("urls"),
+  networkNote: $("network-note"),
   qrWrap: $("qr-wrap"),
   qr: $<HTMLImageElement>("qr"),
   open: $<HTMLButtonElement>("open"),
@@ -102,6 +103,45 @@ let localError: string | null = null;
 let qrFor: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
+
+let refreshTimer: number | null = null;
+let networkNoteTimer: number | null = null;
+let networkNote = false;
+
+function stopRefresh(): void {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function startRefresh(): void {
+  stopRefresh();
+  refreshTimer = window.setInterval(() => void refreshSnapshot(), 4000);
+}
+
+async function refreshSnapshot(): Promise<void> {
+  try {
+    const next = await invoke<Snapshot>("get_snapshot");
+    if (!next.running) {
+      stopRefresh();
+      return;
+    }
+    const changed = JSON.stringify(next.urls) !== JSON.stringify(snapshot?.urls ?? []);
+    snapshot = next;
+    if (changed) {
+      networkNote = true;
+      if (networkNoteTimer !== null) window.clearTimeout(networkNoteTimer);
+      networkNoteTimer = window.setTimeout(() => {
+        networkNote = false;
+        apply();
+      }, 8000);
+    }
+    apply();
+  } catch {
+    /* keep the last snapshot */
+  }
+}
 
 async function persistPassword(password: string | null): Promise<void> {
   try {
@@ -174,6 +214,7 @@ function text() {
     groupUploads: t("ui.group_uploads"),
     groupBehavior: t("ui.group_behavior"),
     settingsLocked: t("ui.settings_locked"),
+    networkChanged: t("ui.network_changed"),
     security: t("ui.security"),
     version: t("ui.version"),
   };
@@ -283,6 +324,8 @@ function apply(): void {
   elements.shareKeyLabel.textContent = label.uploadKey;
   elements.copyShareKey.textContent = label.copyKey;
   elements.shareUploadLink.textContent = label.copyLink;
+  elements.networkNote.hidden = !(running && networkNote);
+  elements.networkNote.textContent = label.networkChanged;
   elements.run.textContent = running ? label.stop : label.start;
   elements.run.classList.toggle("stop", running);
   elements.open.textContent = label.open;
@@ -437,6 +480,7 @@ async function start(): Promise<void> {
     localError = String(error);
   }
   busy = false;
+  if (snapshot?.running) startRefresh();
   apply();
 }
 
@@ -446,6 +490,8 @@ async function stop(): Promise<void> {
   apply();
   try {
     snapshot = await invoke<Snapshot>("stop_sharing");
+    stopRefresh();
+    networkNote = false;
     syncInputs();
   } catch (error) {
     localError = String(error);
@@ -543,6 +589,7 @@ async function boot(): Promise<void> {
 
   syncInputs();
   apply();
+  if (snapshot.running) startRefresh();
 
   await listen<Snapshot>("snapshot", (event) => {
     const wasRunning = snapshot?.running;
