@@ -202,22 +202,24 @@ pub fn render(
       <strong>{title}</strong>
       <button class="icon-x" id="up-close" type="button" aria-label="{close}">×</button>
     </div>
-    <div class="drop" id="up-drop">
-      <div class="drop-copy">
-        <strong>{drop}</strong>
-        <span class="hint">{hint}</span>
-      </div>
-      <button class="btn" id="up-pick" type="button">{choose}</button>
-      <input id="up-files" type="file" multiple hidden>
-    </div>
     <div class="keyrow">
       <div class="keyfield">
         <input id="up-key" type="password" placeholder="{key}" autocomplete="off" spellcheck="false">
-        <button class="clear-btn" id="up-clear" type="button" aria-label="{clear}" title="{clear}">×</button>
+        <button class="clear-btn" id="up-clear" type="button" aria-label="{clear}" title="{clear}" hidden>×</button>
       </div>
     </div>
-    <div class="up-status hint" id="up-status"></div>
-    <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
+    <div class="up-area" id="up-area" hidden>
+      <div class="drop" id="up-drop">
+        <div class="drop-copy">
+          <strong>{drop}</strong>
+          <span class="hint">{hint}</span>
+        </div>
+        <button class="btn" id="up-pick" type="button">{choose}</button>
+        <input id="up-files" type="file" multiple hidden>
+      </div>
+      <div class="up-status hint" id="up-status"></div>
+      <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
+    </div>
   </div>
 </div>
 <div class="drop-overlay" id="up-overlay" hidden><span>{dropping}</span></div>"#,
@@ -545,12 +547,12 @@ tbody tr:hover { background: var(--row-hover); }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 20px;
   background: rgba(10, 14, 20, 0.45);
 }
 .modal-card {
   width: 100%;
-  max-width: 520px;
+  max-width: 420px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -560,6 +562,7 @@ tbody tr:hover { background: var(--row-hover); }
   gap: 12px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
 }
+.up-area { display: flex; flex-direction: column; gap: 12px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; }
 .modal-head strong { font-size: 14px; }
 .icon-x {
@@ -631,6 +634,7 @@ const UPLOAD_JS: &str = r#"
   const openBtn = document.getElementById('up-open');
   const keyBtn = document.getElementById('key-open');
   const clearBtn = document.getElementById('up-clear');
+  const area = document.getElementById('up-area');
   const closeBtn = document.getElementById('up-close');
   const overlay = document.getElementById('up-overlay');
   const drop = document.getElementById('up-drop');
@@ -653,6 +657,8 @@ const UPLOAD_JS: &str = r#"
     const hasKey = keyInput.value.trim().length > 0;
     if (openBtn) openBtn.hidden = !hasKey;
     if (keyBtn) keyBtn.hidden = hasKey;
+    if (clearBtn) clearBtn.hidden = !hasKey;
+    if (area) area.hidden = !hasKey;
   };
   keyInput.addEventListener('input', () => { remember(); syncActions(); });
   clearBtn.addEventListener('click', () => {

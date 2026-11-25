@@ -115,6 +115,7 @@ async function persistPassword(password: string | null): Promise<void> {
 
 function schedulePasswordSave(): void {
   draft.password = elements.password.value;
+  updatePasswordClear();
   if (passwordTimer !== null) window.clearTimeout(passwordTimer);
   const value = elements.password.value || null;
   passwordTimer = window.setTimeout(() => void persistPassword(value), 350);
@@ -179,10 +180,15 @@ function text() {
   };
 }
 
+function updatePasswordClear(): void {
+  elements.passwordClear.hidden = elements.password.value.length === 0;
+}
+
 function syncInputs(): void {
   const settings = snapshot?.settings;
   elements.port.value = String(settings?.port ?? draft.port);
   elements.password.value = draft.password;
+  updatePasswordClear();
   elements.autoStart.checked = settings?.auto_start ?? false;
   elements.tray.checked = settings?.minimize_to_tray ?? true;
   renderFolders();
@@ -559,6 +565,7 @@ elements.password.addEventListener("input", schedulePasswordSave);
 elements.passwordClear.addEventListener("click", () => {
   elements.password.value = "";
   draft.password = "";
+  updatePasswordClear();
   if (passwordTimer !== null) window.clearTimeout(passwordTimer);
   void persistPassword(null);
   elements.password.focus();
