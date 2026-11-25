@@ -607,3 +607,26 @@ fn rejected_upload_still_delivers_its_error_response() {
         201
     );
 }
+
+#[test]
+fn accepts_uploads_larger_than_the_socket_buffer() {
+    let root = temp_root("large-upload");
+    let server = start_with_upload(
+        &root,
+        None,
+        UploadConfig {
+            enabled: true,
+            key: "k3y".into(),
+            max_bytes: 16 * 1024 * 1024,
+        },
+    );
+    let payload = "x".repeat(8 * 1024 * 1024);
+    let reply = put(server.port, "name=large.bin", Some("k3y"), &payload);
+    assert_eq!(reply.status, 201);
+    assert_eq!(
+        std::fs::metadata(root.join("uploads/large.bin"))
+            .unwrap()
+            .len(),
+        8 * 1024 * 1024
+    );
+}

@@ -202,6 +202,9 @@ fn accept_loop(
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
+                // BSD/macOS accept() inherits O_NONBLOCK from the listener, which
+                // turns body reads into EAGAIN instead of blocking.
+                let _ = stream.set_nonblocking(false);
                 if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
                     let mut stream = stream;
                     let _ = http::status_line_only(&mut stream, 503);
