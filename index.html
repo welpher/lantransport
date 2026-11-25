@@ -23,10 +23,12 @@
       </header>
 
       <main class="stack">
-        <section class="card">
+        <div id="error" class="error" hidden></div>
+
+        <section id="setup-card" class="card">
           <div class="section-head">
             <h2 id="folder-label"></h2>
-            <span id="running-hint" class="hint"></span>
+            <span class="hint" id="setup-hint"></span>
           </div>
           <div class="folder-row">
             <div id="folder-path" class="path" title=""></div>
@@ -52,40 +54,52 @@
             <input id="remember" type="checkbox" />
             <span id="remember-label"></span>
           </label>
-          <div class="upload-block">
-            <label class="check">
-              <input id="allow-uploads" type="checkbox" />
-              <span id="allow-uploads-label"></span>
-            </label>
-            <div id="upload-settings" class="upload-settings" hidden>
-              <div class="key-row">
-                <span class="key-label" id="upload-key-label"></span>
-                <code id="upload-key" class="key"></code>
-                <button id="copy-key" class="btn"></button>
-                <button id="regen-key" class="btn ghost"></button>
-              </div>
-              <div class="key-row">
-                <button id="copy-link" class="btn"></button>
-                <label class="inline-field">
-                  <span id="max-upload-label"></span>
-                  <input id="max-upload" type="number" min="1" max="1048576" inputmode="numeric" />
-                </label>
-              </div>
-              <p class="hint" id="upload-hint"></p>
-            </div>
-          </div>
-          <div id="error" class="error" hidden></div>
           <button id="primary" class="primary"></button>
         </section>
 
         <section id="running-card" class="card" hidden>
-          <div class="section-head"><h2 id="urls-label"></h2></div>
+          <div class="running-head">
+            <div class="running-title">
+              <span class="hint" id="sharing-label"></span>
+              <h2 id="sharing-folder"></h2>
+            </div>
+            <span class="pill on"><span class="dot"></span><span id="live-label"></span></span>
+          </div>
           <ul id="urls" class="urls"></ul>
           <div class="actions">
             <button id="qr-toggle" class="btn"></button>
             <button id="open" class="btn"></button>
           </div>
           <div id="qr-wrap" class="qr" hidden><img id="qr" alt="QR code" draggable="false" /></div>
+          <div id="upload-share" class="upload-share" hidden>
+            <span class="key-label" id="share-key-label"></span>
+            <code id="share-key" class="key"></code>
+            <button id="copy-share-key" class="btn"></button>
+            <button id="share-upload-link" class="btn ghost"></button>
+          </div>
+          <button id="stop" class="primary stop"></button>
+        </section>
+
+        <section id="upload-card" class="card">
+          <label class="check">
+            <input id="allow-uploads" type="checkbox" />
+            <span id="allow-uploads-label"></span>
+          </label>
+          <div id="upload-settings" class="upload-settings" hidden>
+            <div class="key-row">
+              <span class="key-label" id="upload-key-label"></span>
+              <code id="upload-key" class="key"></code>
+              <button id="copy-key" class="btn"></button>
+              <button id="regen-key" class="btn ghost"></button>
+            </div>
+            <div class="key-row">
+              <label class="inline-field">
+                <span id="max-upload-label"></span>
+                <input id="max-upload" type="number" min="1" max="1048576" inputmode="numeric" />
+              </label>
+            </div>
+            <p class="hint" id="upload-hint"></p>
+          </div>
         </section>
 
         <section class="card prefs">

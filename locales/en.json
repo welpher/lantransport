@@ -29,7 +29,6 @@
   "ui.upload_hint": "Send the link and key together. Recipients can drop files into the folder they are viewing.",
   "ui.security": "Anyone on this network with the link can browse and download. Only people with the upload key can add files; nothing can be deleted.",
   "ui.version": "Version",
-
   "error.port_in_use": "That port is taken. Try another one.",
   "error.invalid_root": "That folder does not exist or cannot be read.",
   "error.permission_denied": "Permission denied. Try a port above 1024.",
@@ -39,7 +38,6 @@
   "error.no_folder": "Choose a folder first.",
   "error.not_running": "Start sharing before copying an upload link.",
   "error.io": "Could not start. Please try again.",
-
   "page.home": "Home",
   "page.items": "{n} items",
   "page.total": "{size} total",
@@ -53,7 +51,6 @@
   "page.footer_uploads": "Read-only browse · open a name to preview, Download to save · key holders can upload",
   "page.filtered": "{n} items match",
   "page.language": "Language",
-
   "upload.title": "Upload files",
   "upload.hint": "Upload key required · you can also drop files here",
   "upload.choose": "Choose files",
@@ -63,14 +60,12 @@
   "upload.done": "Uploaded. Refreshing…",
   "upload.key": "Upload key",
   "upload.uploading": "Uploading",
-
   "error.400": "Malformed request.",
   "error.403": "Cannot read folder.",
   "error.404": "No such file or folder.",
   "error.429": "Too many attempts. Try again later.",
   "error.500": "Internal error.",
   "auth.hint": "Password required. The username is always share.",
-
   "upload.err.disabled": "Uploads are disabled.",
   "upload.err.wrong_key": "Wrong upload key.",
   "upload.err.too_many": "Too many attempts. Try again later.",
@@ -81,10 +76,13 @@
   "upload.err.too_large": "File exceeds the size limit.",
   "upload.err.write": "Cannot write file.",
   "upload.err.interrupted": "Upload interrupted.",
-
   "tray.open": "Open LanTransport",
   "tray.copy": "Copy link",
   "tray.start": "Start sharing",
   "tray.stop": "Stop sharing",
-  "tray.quit": "Quit"
+  "tray.quit": "Quit",
+  "language.name": "English",
+  "ui.sharing": "Sharing",
+  "ui.live": "Live",
+  "ui.copy_key": "Copy key"
 }

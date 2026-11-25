@@ -77,6 +77,7 @@ Layout:
 ```
 src/                     UI (vanilla TypeScript + Vite)
 locales/                 one catalog per language, shared by app and web page
+                         (drop a new <code>.json in and the pickers pick it up)
 src-tauri/src/server/    embedded HTTP server (listing, downloads, uploads, auth)
 src-tauri/src/           Tauri shell: tray, settings, commands
 ```

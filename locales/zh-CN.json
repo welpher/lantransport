@@ -29,7 +29,6 @@
   "ui.upload_hint": "把链接和 key 一起发给对方。对方打开链接后可以把文件拖进当前目录。",
   "ui.security": "拿到链接的人可以浏览和下载；只有拿到上传 key 的人能添加文件，任何人都不能删除或修改。",
   "ui.version": "版本",
-
   "error.port_in_use": "端口被占用了，换一个端口试试。",
   "error.invalid_root": "文件夹不存在或无法访问。",
   "error.permission_denied": "没有权限，试试 1024 以上的端口。",
@@ -39,7 +38,6 @@
   "error.no_folder": "先选择要共享的文件夹。",
   "error.not_running": "先开始共享，才能复制上传链接。",
   "error.io": "启动失败，请重试。",
-
   "page.home": "根目录",
   "page.items": "{n} 个项目",
   "page.total": "文件共 {size}",
@@ -53,7 +51,6 @@
   "page.footer_uploads": "只读浏览 · 点文件名预览，点「下载」另存为 · 拿到 key 的人可以上传",
   "page.filtered": "筛选出 {n} 个项目",
   "page.language": "语言",
-
   "upload.title": "上传文件",
   "upload.hint": "需要上传 key · 也可以把文件拖进来",
   "upload.choose": "选择文件",
@@ -63,14 +60,12 @@
   "upload.done": "上传完成，正在刷新…",
   "upload.key": "上传 key",
   "upload.uploading": "上传中",
-
   "error.400": "请求格式不正确。",
   "error.403": "无法读取目录。",
   "error.404": "没有这个文件或目录。",
   "error.429": "尝试次数过多，请稍后再试。",
   "error.500": "服务器内部错误。",
   "auth.hint": "需要访问口令。用户名固定为 share。",
-
   "upload.err.disabled": "上传未开启。",
   "upload.err.wrong_key": "上传 key 不正确。",
   "upload.err.too_many": "尝试次数过多，请稍后再试。",
@@ -81,10 +76,13 @@
   "upload.err.too_large": "文件超过大小限制。",
   "upload.err.write": "无法写入文件。",
   "upload.err.interrupted": "上传中断。",
-
   "tray.open": "打开 LanTransport",
   "tray.copy": "复制链接",
   "tray.start": "开始共享",
   "tray.stop": "停止共享",
-  "tray.quit": "退出"
+  "tray.quit": "退出",
+  "language.name": "中文",
+  "ui.sharing": "正在共享",
+  "ui.live": "运行中",
+  "ui.copy_key": "复制 key"
 }

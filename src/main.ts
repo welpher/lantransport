@@ -43,8 +43,8 @@ const elements = {
   status: $("status"),
   statusText: $("status-text"),
   locale: $<HTMLSelectElement>("locale"),
+  setupCard: $("setup-card"),
   folderLabel: $("folder-label"),
-  runningHint: $("running-hint"),
   folderPath: $("folder-path"),
   choose: $<HTMLButtonElement>("choose"),
   reveal: $<HTMLButtonElement>("reveal"),
@@ -63,7 +63,6 @@ const elements = {
   uploadKey: $("upload-key"),
   copyKey: $<HTMLButtonElement>("copy-key"),
   regenKey: $<HTMLButtonElement>("regen-key"),
-  copyLink: $<HTMLButtonElement>("copy-link"),
   maxUploadLabel: $("max-upload-label"),
   maxUpload: $<HTMLInputElement>("max-upload"),
   uploadHint: $("upload-hint"),
@@ -71,7 +70,15 @@ const elements = {
   error: $("error"),
   primary: $<HTMLButtonElement>("primary"),
   runningCard: $("running-card"),
-  urlsLabel: $("urls-label"),
+  sharingLabel: $("sharing-label"),
+  sharingFolder: $("sharing-folder"),
+  liveLabel: $("live-label"),
+  uploadShare: $("upload-share"),
+  shareKeyLabel: $("share-key-label"),
+  shareKey: $("share-key"),
+  copyShareKey: $<HTMLButtonElement>("copy-share-key"),
+  shareUploadLink: $<HTMLButtonElement>("share-upload-link"),
+  stop: $<HTMLButtonElement>("stop"),
   urls: $<HTMLUListElement>("urls"),
   qrToggle: $<HTMLButtonElement>("qr-toggle"),
   qrWrap: $("qr-wrap"),
@@ -133,6 +140,9 @@ function text() {
     copyLink: t("ui.copy_link"),
     maxUpload: t("ui.max_upload"),
     uploadHint: t("ui.upload_hint"),
+    sharing: t("ui.sharing"),
+    live: t("ui.live"),
+    copyKey: t("ui.copy_key"),
     security: t("ui.security"),
     version: t("ui.version"),
   };
@@ -151,19 +161,17 @@ function syncInputs(): void {
 
 function renderFolder(): void {
   const path = draft.root ?? snapshot?.settings.root ?? null;
-  const running = snapshot?.running ?? false;
   const label = text();
   elements.folderPath.textContent = path ?? label.noFolder;
   elements.folderPath.classList.toggle("empty", !path);
   elements.folderPath.title = path ?? "";
   elements.reveal.hidden = !path;
-  elements.runningHint.textContent = running ? `:${snapshot?.port}` : "";
 }
 
 function apply(): void {
   const label = text();
   const running = snapshot?.running ?? false;
-  document.documentElement.lang = locale === "zh" ? "zh-CN" : "en";
+  document.documentElement.lang = locale;
   elements.locale.value = locale;
 
   elements.tagline.textContent = label.tagline;
@@ -178,10 +186,14 @@ function apply(): void {
   elements.allowUploadsLabel.textContent = label.uploads;
   elements.uploadKeyLabel.textContent = label.uploadKey;
   elements.regenKey.textContent = label.regenerate;
-  elements.copyLink.textContent = label.copyLink;
   elements.maxUploadLabel.textContent = label.maxUpload;
   elements.uploadHint.textContent = label.uploadHint;
-  elements.urlsLabel.textContent = label.urls;
+  elements.sharingLabel.textContent = label.sharing;
+  elements.liveLabel.textContent = label.live;
+  elements.shareKeyLabel.textContent = label.uploadKey;
+  elements.copyShareKey.textContent = label.copyKey;
+  elements.shareUploadLink.textContent = label.copyLink;
+  elements.stop.textContent = label.stop;
   elements.qrToggle.textContent = label.qr;
   elements.open.textContent = label.open;
   elements.autoStartLabel.textContent = label.autoStart;
@@ -192,12 +204,20 @@ function apply(): void {
     : "";
 
   const settings = snapshot?.settings;
+  elements.setupCard.hidden = running;
+  elements.runningCard.hidden = !running;
+  elements.sharingFolder.textContent = settings?.root ?? "";
+  const shareUploads = running
+    && (settings?.allow_uploads ?? false)
+    && Boolean(settings?.upload_key);
+  elements.uploadShare.hidden = !shareUploads;
+  elements.shareKey.textContent = settings?.upload_key ?? "";
+  elements.stop.disabled = busy;
   elements.allowUploads.checked = settings?.allow_uploads ?? false;
   elements.uploadSettings.hidden = !(settings?.allow_uploads ?? false);
   elements.uploadKey.textContent = settings?.upload_key || "—";
   elements.copyKey.textContent = label.copy;
   elements.copyKey.disabled = !settings?.upload_key;
-  elements.copyLink.disabled = !running || !settings?.upload_key;
   if (document.activeElement !== elements.maxUpload) {
     elements.maxUpload.value = String(settings?.max_upload_mb ?? 4096);
   }
@@ -205,9 +225,8 @@ function apply(): void {
   elements.status.classList.toggle("on", running);
   elements.statusText.textContent = busy ? label.starting : running ? label.running : label.stopped;
 
-  elements.primary.textContent = running ? label.stop : label.start;
-  elements.primary.classList.toggle("stop", running);
-  elements.primary.disabled = busy;
+  elements.primary.textContent = label.start;
+  elements.primary.disabled = busy || running;
 
   for (const control of [
     elements.choose,
@@ -227,8 +246,6 @@ function apply(): void {
 }
 
 function renderUrls(): void {
-  const running = snapshot?.running ?? false;
-  elements.runningCard.hidden = !running;
   const urls = snapshot?.urls ?? [];
   const key = urls.join("|");
   if (elements.urls.dataset.key === key) return;
@@ -363,7 +380,7 @@ function copyUploadLink(): void {
     return;
   }
   const base = urls.find((value) => !value.includes("127.0.0.1")) ?? urls[0];
-  void flashCopy(`${base}/?key=${encodeURIComponent(key)}`, elements.copyLink);
+  void flashCopy(`${base}/?key=${encodeURIComponent(key)}`, elements.shareUploadLink);
 }
 
 async function toggleQr(): Promise<void> {
@@ -430,10 +447,8 @@ elements.reveal.addEventListener("click", () => {
   const path = draft.root ?? snapshot?.settings.root;
   if (path) void revealItemInDir(path);
 });
-elements.primary.addEventListener("click", () => {
-  if (snapshot?.running) void stop();
-  else void start();
-});
+elements.primary.addEventListener("click", () => void start());
+elements.stop.addEventListener("click", () => void stop());
 elements.password.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !snapshot?.running) void start();
 });
@@ -457,7 +472,11 @@ elements.copyKey.addEventListener("click", () => {
   const key = snapshot?.settings.upload_key;
   if (key) void flashCopy(key, elements.copyKey);
 });
-elements.copyLink.addEventListener("click", copyUploadLink);
+elements.copyShareKey.addEventListener("click", () => {
+  const key = snapshot?.settings.upload_key;
+  if (key) void flashCopy(key, elements.copyShareKey);
+});
+elements.shareUploadLink.addEventListener("click", copyUploadLink);
 elements.autoStart.addEventListener("change", () => {
   void updatePrefs({ autoStart: elements.autoStart.checked });
 });

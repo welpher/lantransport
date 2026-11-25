@@ -28,6 +28,10 @@ for (const file of readdirSync(dir).filter((name) => name.endsWith(".json"))) {
       console.error(`${file}: placeholder mismatch in ${key}`);
     }
   }
+  if (!("language.name" in catalog)) {
+    failed = true;
+    console.error(`${file}: missing language.name`);
+  }
   console.log(`${file}: ${keys.length} keys`);
 }
 if (failed) process.exit(1);

@@ -9,17 +9,14 @@ struct Catalog {
     entries: HashMap<String, String>,
 }
 
-pub const LANGUAGES: &[(&str, &str)] = &[("en", "English"), ("zh-CN", "中文")];
+include!(concat!(env!("OUT_DIR"), "/locales.rs"));
 
 fn catalogs() -> &'static HashMap<&'static str, Catalog> {
     static CATALOGS: OnceLock<HashMap<&'static str, Catalog>> = OnceLock::new();
     CATALOGS.get_or_init(|| {
-        let sources = [
-            ("en", include_str!("../../../locales/en.json")),
-            ("zh-CN", include_str!("../../../locales/zh-CN.json")),
-        ];
-        sources
-            .into_iter()
+        LOCALE_SOURCES
+            .iter()
+            .copied()
             .map(|(code, json)| {
                 let entries: HashMap<String, String> =
                     serde_json::from_str(json).expect("locale catalog is valid JSON");

@@ -1,15 +1,20 @@
-import en from "../locales/en.json";
-import zhCN from "../locales/zh-CN.json";
+const modules = import.meta.glob("../locales/*.json", { eager: true }) as Record<
+  string,
+  { default: Record<string, string> }
+>;
 
-export const LANGUAGES = [
-  { code: "en", name: "English" },
-  { code: "zh-CN", name: "中文" },
-];
+export const LANGUAGES = Object.entries(modules)
+  .map(([path, module]) => {
+    const code = path.split("/").pop()?.replace(/\.json$/, "") ?? path;
+    return { code, name: module.default["language.name"] ?? code };
+  })
+  .sort((a, b) => a.code.localeCompare(b.code));
 
-const catalogs: Record<string, Record<string, string>> = {
-  en: en as Record<string, string>,
-  "zh-CN": zhCN as Record<string, string>,
-};
+const catalogs: Record<string, Record<string, string>> = {};
+for (const [path, module] of Object.entries(modules)) {
+  const code = path.split("/").pop()?.replace(/\.json$/, "") ?? path;
+  catalogs[code] = module.default;
+}
 
 export function normalizeLocale(code: string): string {
   const value = code.trim().toLowerCase();
@@ -36,8 +41,8 @@ export function translate(
   key: string,
   vars?: Record<string, string | number>,
 ): string {
-  const catalog = catalogs[locale] ?? catalogs.en;
-  let text = catalog[key] ?? catalogs.en[key] ?? key;
+  const catalog = catalogs[locale] ?? catalogs.en ?? {};
+  let text = catalog[key] ?? catalogs.en?.[key] ?? key;
   if (vars) {
     for (const [name, value] of Object.entries(vars)) {
       text = text.split(`{${name}}`).join(String(value));

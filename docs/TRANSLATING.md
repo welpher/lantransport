@@ -18,10 +18,12 @@ overridden in the app.
 1. Copy `locales/en.json` to `locales/<code>.json` using a BCP 47 code (`pt-BR`, `ja`).
 2. Translate the values, keep the keys untouched.
 3. Keep placeholders (`{n}`, `{size}`) and product names (`LanTransport`) unchanged.
-4. Add the language to `LANGUAGES` in two places:
-   - `src-tauri/src/server/i18n.rs`
-   - `src/i18n.ts`
+4. Set `language.name` to the language's own name (`Português`, `日本語`).
 5. Run `pnpm i18n:check` and open a PR.
+
+The language list is discovered at build time: `src-tauri/build.rs` scans
+`locales/*.json` and the UI uses `import.meta.glob`, so a merged catalog shows up
+in both language pickers without touching code.
 
 ## Weblate
 

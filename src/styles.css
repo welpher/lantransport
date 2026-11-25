@@ -175,6 +175,26 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .qr { display: flex; justify-content: center; padding: 6px 0 2px; }
 .qr img { width: 208px; height: 208px; border-radius: 12px; background: #fff; padding: 10px; border: 1px solid var(--line); }
 .prefs { gap: 10px; }
+.running-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.running-title { min-width: 0; }
+.running-title h2 {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.upload-share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+}
+.running-card .primary.stop { margin-top: 2px; }
 .upload-block {
   border-top: 1px dashed var(--line);
   padding-top: 12px;
