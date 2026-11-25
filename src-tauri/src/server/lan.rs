@@ -57,6 +57,17 @@ fn primary_ipv4() -> Option<Ipv4Addr> {
     }
 }
 
+pub fn port_available(port: u16) -> bool {
+    if port == 0 {
+        return false;
+    }
+    // A wildcard bind can succeed while another process listens on 127.0.0.1
+    // (SO_REUSEADDR), so check both and release each probe immediately.
+    let wildcard = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok();
+    let loopback = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok();
+    wildcard && loopback
+}
+
 pub fn urls(port: u16, allow_lan: bool) -> Vec<String> {
     let mut urls = vec![format!("http://127.0.0.1:{port}")];
     if allow_lan {
@@ -70,6 +81,14 @@ pub fn urls(port: u16, allow_lan: bool) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_busy_ports() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(!port_available(port));
+        assert!(!port_available(0));
+    }
 
     #[test]
     fn ignores_virtual_interfaces() {

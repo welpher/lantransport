@@ -14,12 +14,12 @@ No account, no cloud, no relay: the files never leave your network.
 │                                          │
 │  Folder                                  │
 │  /Users/me/Downloads           [Choose…] │
-│  Port 8000      [x] Allow LAN access     │
+│  Port 8787      [x] Allow LAN access     │
 │                                          │
 │  [x] Allow uploads with a key            │
 │      k7m3qp9x2f   [Copy] [Regenerate]    │
 │                                          │
-│  http://192.168.1.24:8000  [Copy]        │
+│  http://192.168.1.24:8787  [Copy]        │
 └──────────────────────────────────────────┘
 ```
 
