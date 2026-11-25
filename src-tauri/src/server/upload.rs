@@ -18,7 +18,11 @@ pub struct UploadConfig {
 
 impl Default for UploadConfig {
     fn default() -> Self {
-        Self { enabled: false, key: String::new(), max_bytes: 4 * 1024 * 1024 * 1024 }
+        Self {
+            enabled: false,
+            key: String::new(),
+            max_bytes: 4 * 1024 * 1024 * 1024,
+        }
     }
 }
 
@@ -29,7 +33,11 @@ pub fn handle<R: BufRead>(
     peer: IpAddr,
 ) -> Response {
     let locale = i18n::from_request(request);
-    let config = ctx.upload.read().unwrap_or_else(|error| error.into_inner()).clone();
+    let config = ctx
+        .upload
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
     if !config.enabled || config.key.is_empty() {
         return fail(403, locale, "upload.err.disabled");
     }
@@ -42,7 +50,8 @@ pub fn handle<R: BufRead>(
         .header("x-upload-key")
         .map(str::to_string)
         .or_else(|| query_param(&request.target, "key"));
-    let allowed = supplied.is_some_and(|key| constant_time_eq(key.as_bytes(), config.key.as_bytes()));
+    let allowed =
+        supplied.is_some_and(|key| constant_time_eq(key.as_bytes(), config.key.as_bytes()));
     if !allowed {
         ctx.upload_limiter.note_failure(peer);
         return fail(403, locale, "upload.err.wrong_key");
@@ -177,7 +186,10 @@ fn unique_target(directory: &Path, name: &str) -> PathBuf {
         return candidate;
     }
     let path = Path::new(name);
-    let stem = path.file_stem().map(|value| value.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let extension = path
         .extension()
         .map(|value| format!(".{}", value.to_string_lossy()))

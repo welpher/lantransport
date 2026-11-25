@@ -36,7 +36,9 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn refresh(app: &AppHandle) -> tauri::Result<()> {
-    let Some(tray) = app.tray_by_id("main") else { return Ok(()) };
+    let Some(tray) = app.tray_by_id("main") else {
+        return Ok(());
+    };
     let menu = build_menu(app)?;
     tray.set_menu(Some(menu))?;
     let snapshot = state::snapshot(app);
@@ -58,7 +60,11 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let toggle_item = MenuItem::with_id(
         app,
         "toggle",
-        if snapshot.running { t("tray.stop") } else { t("tray.start") },
+        if snapshot.running {
+            t("tray.stop")
+        } else {
+            t("tray.start")
+        },
         true,
         None::<&str>,
     )?;

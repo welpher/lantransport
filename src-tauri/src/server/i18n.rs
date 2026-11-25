@@ -130,10 +130,7 @@ mod tests {
 
     #[test]
     fn translates_and_substitutes() {
-        assert_eq!(
-            t_args("en", "page.items", &[("n", "3".into())]),
-            "3 items"
-        );
+        assert_eq!(t_args("en", "page.items", &[("n", "3".into())]), "3 items");
         assert_eq!(t("zh-CN", "page.download"), "下载");
         assert_eq!(t("en", "missing.key"), "missing.key");
     }

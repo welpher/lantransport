@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-use crate::server::i18n;
 use crate::server::ServerHandle;
+use crate::server::i18n;
 use crate::settings::Settings;
 
 pub struct AppState {
@@ -57,8 +57,15 @@ pub struct Snapshot {
 
 pub fn snapshot(app: &AppHandle) -> Snapshot {
     let state = app.state::<AppState>();
-    let settings = state.settings.lock().unwrap_or_else(|error| error.into_inner()).clone();
-    let server = state.server.lock().unwrap_or_else(|error| error.into_inner());
+    let settings = state
+        .settings
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    let server = state
+        .server
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     let (running, port, urls, started_at_ms) = match server.as_ref() {
         Some(server) => (
             true,
@@ -80,6 +87,10 @@ pub fn snapshot(app: &AppHandle) -> Snapshot {
         port,
         urls,
         started_at_ms,
-        last_error: state.last_error.lock().unwrap_or_else(|error| error.into_inner()).clone(),
+        last_error: state
+            .last_error
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone(),
     }
 }

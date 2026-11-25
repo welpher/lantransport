@@ -32,7 +32,10 @@ pub fn ext_label(name: &str, is_dir: bool) -> String {
     if is_dir {
         return "DIR".into();
     }
-    match std::path::Path::new(name).extension().and_then(|ext| ext.to_str()) {
+    match std::path::Path::new(name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+    {
         Some(ext) if !ext.is_empty() => ext.chars().take(5).collect::<String>().to_uppercase(),
         _ => "FILE".into(),
     }
@@ -54,7 +57,10 @@ pub fn render(
 
     let mut rows = String::new();
     if url_path != "/" {
-        let parent = url_path.trim_end_matches('/').rsplit_once('/').map_or("/", |(head, _)| head);
+        let parent = url_path
+            .trim_end_matches('/')
+            .rsplit_once('/')
+            .map_or("/", |(head, _)| head);
         let parent = if parent.is_empty() { "/" } else { parent };
         rows.push_str(&format!(
             "<tr class='dir' data-name='..'><td><div class='name'><span class='ext'>DIR</span><a href='{}'>..</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
@@ -79,9 +85,10 @@ pub fn render(
 
     for entry in &files {
         let href = encode_segment(&entry.name);
-        let modified = entry
-            .modified
-            .map_or_else(|| "—".to_string(), |time| time.format("%Y-%m-%d %H:%M").to_string());
+        let modified = entry.modified.map_or_else(
+            || "—".to_string(),
+            |time| time.format("%Y-%m-%d %H:%M").to_string(),
+        );
         rows.push_str(&format!(
             "<tr data-name='{}'><td><div class='name'><span class='ext'>{}</span><a href='{}'>{}</a></div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{}?download=1'>{}</a></td></tr>",
             escape_html(&entry.name.to_lowercase()),
@@ -100,7 +107,10 @@ pub fn render(
     for part in url_path.split('/').filter(|part| !part.is_empty()) {
         walk.push('/');
         walk.push_str(&encode_segment(part));
-        crumbs.push_str(&format!("<span>/</span><a href='{walk}/'>{}</a>", escape_html(part)));
+        crumbs.push_str(&format!(
+            "<span>/</span><a href='{walk}/'>{}</a>",
+            escape_html(part)
+        ));
     }
 
     let upload_panel = if uploads {
@@ -148,14 +158,21 @@ pub fn render(
         .collect();
 
     let empty = if entries.is_empty() {
-        format!("<tr><td colspan='4' class='empty'>{}</td></tr>", t("page.empty"))
+        format!(
+            "<tr><td colspan='4' class='empty'>{}</td></tr>",
+            t("page.empty")
+        )
     } else {
         String::new()
     };
     let filtered = t("page.filtered").replace('\'', "\\'");
     let items = t1("page.items", entries.len().to_string());
     let total = t1("page.total", human_size(total_size));
-    let footer_key = if uploads { "page.footer_uploads" } else { "page.footer" };
+    let footer_key = if uploads {
+        "page.footer_uploads"
+    } else {
+        "page.footer"
+    };
 
     format!(
         r#"<!doctype html>

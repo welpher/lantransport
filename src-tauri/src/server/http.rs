@@ -164,7 +164,12 @@ pub struct Response {
 
 impl Response {
     pub fn empty(status: u16) -> Self {
-        Self { status, headers: Vec::new(), body: Body::Empty, content_length: 0 }
+        Self {
+            status,
+            headers: Vec::new(),
+            body: Body::Empty,
+            content_length: 0,
+        }
     }
 
     pub fn bytes(status: u16, content_type: &str, body: Vec<u8>) -> Self {
@@ -182,7 +187,12 @@ impl Response {
     }
 
     pub fn file(status: u16, file: File, offset: u64, len: u64) -> Self {
-        Self { status, headers: Vec::new(), body: Body::File { file, offset, len }, content_length: len }
+        Self {
+            status,
+            headers: Vec::new(),
+            body: Body::File { file, offset, len },
+            content_length: len,
+        }
     }
 
     pub fn header(mut self, name: &str, value: impl Into<String>) -> Self {
@@ -246,9 +256,8 @@ pub fn write_response(
 }
 
 pub fn status_line_only(stream: &mut TcpStream, status: u16) -> io::Result<()> {
-    let body = format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>{status}</title><p>{status}</p>"
-    );
+    let body =
+        format!("<!doctype html><meta charset=\"utf-8\"><title>{status}</title><p>{status}</p>");
     let mut response = Response::html(status, body);
     write_response(stream, false, false, &mut response)
 }
@@ -276,7 +285,9 @@ pub fn reason(status: u16) -> &'static str {
 }
 
 pub fn http_date<Tz: chrono::TimeZone>(time: chrono::DateTime<Tz>) -> String {
-    time.with_timezone(&Utc).format("%a, %d %b %Y %H:%M:%S GMT").to_string()
+    time.with_timezone(&Utc)
+        .format("%a, %d %b %Y %H:%M:%S GMT")
+        .to_string()
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -287,27 +298,41 @@ pub enum RangeOutcome {
 }
 
 pub fn parse_range(header: Option<&str>, size: u64) -> RangeOutcome {
-    let Some(header) = header else { return RangeOutcome::Full };
-    let Some(spec) = header.strip_prefix("bytes=") else { return RangeOutcome::Full };
-    let Some(first) = spec.split(',').next() else { return RangeOutcome::Full };
+    let Some(header) = header else {
+        return RangeOutcome::Full;
+    };
+    let Some(spec) = header.strip_prefix("bytes=") else {
+        return RangeOutcome::Full;
+    };
+    let Some(first) = spec.split(',').next() else {
+        return RangeOutcome::Full;
+    };
     let first = first.trim();
-    let Some((from, to)) = first.split_once('-') else { return RangeOutcome::Full };
+    let Some((from, to)) = first.split_once('-') else {
+        return RangeOutcome::Full;
+    };
     if size == 0 {
         return RangeOutcome::Full;
     }
 
     let (start, end) = if from.is_empty() {
-        let Ok(suffix) = to.parse::<u64>() else { return RangeOutcome::Full };
+        let Ok(suffix) = to.parse::<u64>() else {
+            return RangeOutcome::Full;
+        };
         if suffix == 0 {
             return RangeOutcome::Unsatisfiable;
         }
         (size.saturating_sub(suffix), size - 1)
     } else {
-        let Ok(start) = from.parse::<u64>() else { return RangeOutcome::Full };
+        let Ok(start) = from.parse::<u64>() else {
+            return RangeOutcome::Full;
+        };
         let end = if to.is_empty() {
             size - 1
         } else {
-            let Ok(end) = to.parse::<u64>() else { return RangeOutcome::Full };
+            let Ok(end) = to.parse::<u64>() else {
+                return RangeOutcome::Full;
+            };
             end.min(size - 1)
         };
         (start, end)
@@ -417,13 +442,34 @@ mod tests {
     #[test]
     fn range_forms() {
         assert_eq!(parse_range(None, 100), RangeOutcome::Full);
-        assert_eq!(parse_range(Some("bytes=0-9"), 100), RangeOutcome::Partial { start: 0, end: 9 });
-        assert_eq!(parse_range(Some("bytes=90-"), 100), RangeOutcome::Partial { start: 90, end: 99 });
-        assert_eq!(parse_range(Some("bytes=-10"), 100), RangeOutcome::Partial { start: 90, end: 99 });
-        assert_eq!(parse_range(Some("bytes=-500"), 100), RangeOutcome::Partial { start: 0, end: 99 });
-        assert_eq!(parse_range(Some("bytes=200-300"), 100), RangeOutcome::Unsatisfiable);
-        assert_eq!(parse_range(Some("bytes=9-3"), 100), RangeOutcome::Unsatisfiable);
-        assert_eq!(parse_range(Some("bytes=0-9, 20-29"), 100), RangeOutcome::Partial { start: 0, end: 9 });
+        assert_eq!(
+            parse_range(Some("bytes=0-9"), 100),
+            RangeOutcome::Partial { start: 0, end: 9 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=90-"), 100),
+            RangeOutcome::Partial { start: 90, end: 99 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=-10"), 100),
+            RangeOutcome::Partial { start: 90, end: 99 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=-500"), 100),
+            RangeOutcome::Partial { start: 0, end: 99 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=200-300"), 100),
+            RangeOutcome::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range(Some("bytes=9-3"), 100),
+            RangeOutcome::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range(Some("bytes=0-9, 20-29"), 100),
+            RangeOutcome::Partial { start: 0, end: 9 }
+        );
         assert_eq!(parse_range(Some("bytes=abc"), 100), RangeOutcome::Full);
         assert_eq!(parse_range(Some("items=0-9"), 100), RangeOutcome::Full);
         assert_eq!(parse_range(Some("bytes=0-9"), 0), RangeOutcome::Full);
@@ -441,6 +487,9 @@ mod tests {
 
     #[test]
     fn escapes_html() {
-        assert_eq!(escape_html("<a href='x'>&</a>"), "&lt;a href=&#39;x&#39;&gt;&amp;&lt;/a&gt;");
+        assert_eq!(
+            escape_html("<a href='x'>&</a>"),
+            "&lt;a href=&#39;x&#39;&gt;&amp;&lt;/a&gt;"
+        );
     }
 }

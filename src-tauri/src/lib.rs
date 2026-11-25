@@ -22,7 +22,10 @@ pub fn run() {
             tray::setup(&handle)?;
             let auto_start = {
                 let state = handle.state::<AppState>();
-                let settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
+                let settings = state
+                    .settings
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
                 settings.auto_start && settings.root.is_some()
             };
             if auto_start {
@@ -35,7 +38,10 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let minimize = {
                     let state = window.app_handle().state::<AppState>();
-                    let settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
+                    let settings = state
+                        .settings
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner());
                     settings.minimize_to_tray
                 };
                 if minimize {

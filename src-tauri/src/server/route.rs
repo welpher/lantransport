@@ -25,7 +25,9 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
 
     let locale = i18n::from_request(request);
     let (raw_path, raw_query) = split_target(&request.target);
-    let decoded = percent_decode_str(raw_path).decode_utf8_lossy().into_owned();
+    let decoded = percent_decode_str(raw_path)
+        .decode_utf8_lossy()
+        .into_owned();
     if decoded.contains('\0') {
         return simple(400, locale);
     }
@@ -40,8 +42,10 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         }
         if !ctx.auth.check(request.header("authorization")) {
             ctx.limiter.note_failure(peer);
-            return Response::html(401, login_page(locale))
-                .header("WWW-Authenticate", "Basic realm=\"LanTransport\", charset=\"UTF-8\"");
+            return Response::html(401, login_page(locale)).header(
+                "WWW-Authenticate",
+                "Basic realm=\"LanTransport\", charset=\"UTF-8\"",
+            );
         }
         ctx.limiter.note_success(peer);
     }
@@ -70,7 +74,13 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
             .unwrap_or(false);
         serve_listing(&target, &decoded, locale, uploads)
     } else if metadata.is_file() {
-        serve_file(&target, &metadata, raw_query.contains("download"), request, locale)
+        serve_file(
+            &target,
+            &metadata,
+            raw_query.contains("download"),
+            request,
+            locale,
+        )
     } else {
         simple(404, locale)
     }
@@ -89,7 +99,9 @@ fn serve_listing(dir: &Path, url_path: &str, locale: &str, uploads: bool) -> Res
         if name.starts_with('.') {
             continue;
         }
-        let Ok(file_type) = entry.file_type() else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         let metadata = entry.metadata().ok();
         let size = metadata.as_ref().map_or(0, |meta| meta.len());
         if !file_type.is_dir() {
@@ -110,7 +122,9 @@ fn serve_listing(dir: &Path, url_path: &str, locale: &str, uploads: bool) -> Res
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| dir.display().to_string());
     let nonce = nonce();
-    let page = listing::render(&dir_name, url_path, &entries, total_size, locale, &nonce, uploads);
+    let page = listing::render(
+        &dir_name, url_path, &entries, total_size, locale, &nonce, uploads,
+    );
     Response::html(200, page)
         .header("Cache-Control", "no-store")
         .header(
@@ -150,18 +164,20 @@ fn serve_file(
     let content_type = content_type_for(path);
     let mut response = match parse_range(request.header("range"), size) {
         RangeOutcome::Unsatisfiable => {
-            return Response::empty(416).header("Content-Range", format!("bytes */{size}"))
+            return Response::empty(416).header("Content-Range", format!("bytes */{size}"));
         }
         RangeOutcome::Partial { start, end } => {
-            let Ok(file) = File::open(path) else { return simple(404, locale) };
+            let Ok(file) = File::open(path) else {
+                return simple(404, locale);
+            };
             let length = end - start + 1;
-            Response::file(206, file, start, length).header(
-                "Content-Range",
-                format!("bytes {start}-{end}/{size}"),
-            )
+            Response::file(206, file, start, length)
+                .header("Content-Range", format!("bytes {start}-{end}/{size}"))
         }
         RangeOutcome::Full => {
-            let Ok(file) = File::open(path) else { return simple(404, locale) };
+            let Ok(file) = File::open(path) else {
+                return simple(404, locale);
+            };
             Response::file(200, file, 0, size)
         }
     };
@@ -174,7 +190,10 @@ fn serve_file(
         .header("X-Content-Type-Options", "nosniff")
         .header("Referrer-Policy", "no-referrer");
     if let Some(modified) = modified {
-        response = response.header("Last-Modified", http_date(DateTime::<Local>::from(modified)));
+        response = response.header(
+            "Last-Modified",
+            http_date(DateTime::<Local>::from(modified)),
+        );
     }
     if as_attachment {
         let name = path
@@ -192,10 +211,7 @@ fn content_type_for(path: &Path) -> String {
     if essence.starts_with("text/")
         || matches!(
             essence,
-            "application/json"
-                | "application/javascript"
-                | "application/xml"
-                | "image/svg+xml"
+            "application/json" | "application/javascript" | "application/xml" | "image/svg+xml"
         )
     {
         format!("{essence}; charset=utf-8")

@@ -2,9 +2,9 @@ use std::path::Path;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::server::i18n;
 use crate::server::upload::UploadConfig;
 use crate::server::{ServerHandle, StartError};
-use crate::server::i18n;
 use crate::state::{self, AppState, Snapshot};
 use crate::tray;
 
@@ -35,8 +35,15 @@ pub fn upload_config(settings: &crate::settings::Settings) -> UploadConfig {
 pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     let state = app.state::<AppState>();
     let (root, port, allow_lan, password, upload) = {
-        let settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
-        let password = if settings.remember_password { settings.password.clone() } else { None };
+        let settings = state
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let password = if settings.remember_password {
+            settings.password.clone()
+        } else {
+            None
+        };
         (
             settings.root.clone(),
             settings.port,
@@ -45,7 +52,9 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
             upload_config(&settings),
         )
     };
-    let Some(root) = root else { return Err("no_folder".into()) };
+    let Some(root) = root else {
+        return Err("no_folder".into());
+    };
     start_server(app, &root, port, allow_lan, password, upload)
 }
 
@@ -62,23 +71,26 @@ fn start_server(
     }
     let state = app.state::<AppState>();
     {
-        let mut current = state.server.lock().unwrap_or_else(|error| error.into_inner());
+        let mut current = state
+            .server
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         if let Some(mut server) = current.take() {
             server.stop();
         }
     }
 
-    let handle = ServerHandle::start(
-        Path::new(root),
-        port,
-        allow_lan,
-        password,
-        upload,
-    )
-    .map_err(|error| error_code(&error))?;
+    let handle = ServerHandle::start(Path::new(root), port, allow_lan, password, upload)
+        .map_err(|error| error_code(&error))?;
 
-    *state.server.lock().unwrap_or_else(|error| error.into_inner()) = Some(handle);
-    *state.last_error.lock().unwrap_or_else(|error| error.into_inner()) = None;
+    *state
+        .server
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(handle);
+    *state
+        .last_error
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = None;
     notify(app);
     Ok(state::snapshot(app))
 }
@@ -86,25 +98,37 @@ fn start_server(
 fn stop_server(app: &AppHandle) -> Snapshot {
     let state = app.state::<AppState>();
     {
-        let mut current = state.server.lock().unwrap_or_else(|error| error.into_inner());
+        let mut current = state
+            .server
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         if let Some(mut server) = current.take() {
             server.stop();
         }
     }
-    *state.last_error.lock().unwrap_or_else(|error| error.into_inner()) = None;
+    *state
+        .last_error
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = None;
     notify(app);
     state::snapshot(app)
 }
 
 pub fn shutdown(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let mut shutting_down = state.shutting_down.lock().unwrap_or_else(|error| error.into_inner());
+    let mut shutting_down = state
+        .shutting_down
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     if *shutting_down {
         return;
     }
     *shutting_down = true;
     drop(shutting_down);
-    let mut current = state.server.lock().unwrap_or_else(|error| error.into_inner());
+    let mut current = state
+        .server
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     if let Some(mut server) = current.take() {
         server.stop();
     }
@@ -136,12 +160,19 @@ pub fn start_sharing(
     }
 
     {
-        let mut settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
+        let mut settings = state
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         settings.root = Some(root.clone());
         settings.port = port;
         settings.allow_lan = allow_lan;
         settings.remember_password = remember_password;
-        settings.password = if remember_password { password.clone() } else { None };
+        settings.password = if remember_password {
+            password.clone()
+        } else {
+            None
+        };
     }
     let settings = app
         .state::<AppState>()
@@ -149,13 +180,23 @@ pub fn start_sharing(
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .clone();
-    match start_server(&app, &root, port, allow_lan, password, upload_config(&settings)) {
+    match start_server(
+        &app,
+        &root,
+        port,
+        allow_lan,
+        password,
+        upload_config(&settings),
+    ) {
         Ok(snapshot) => {
             let _ = settings.save(&app);
             Ok(snapshot)
         }
         Err(code) => {
-            *state.last_error.lock().unwrap_or_else(|error| error.into_inner()) = Some(code.clone());
+            *state
+                .last_error
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(code.clone());
             notify(&app);
             Err(code)
         }
@@ -176,7 +217,10 @@ pub fn update_prefs(
     minimize_to_tray: Option<bool>,
 ) -> Result<Snapshot, String> {
     let settings = {
-        let mut settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
+        let mut settings = state
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         if let Some(locale) = locale {
             settings.locale = if locale == "auto" {
                 "auto".into()
@@ -206,7 +250,10 @@ pub fn update_upload(
     regenerate: Option<bool>,
 ) -> Snapshot {
     let settings = {
-        let mut settings = state.settings.lock().unwrap_or_else(|error| error.into_inner());
+        let mut settings = state
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         settings.allow_uploads = allow_uploads;
         settings.max_upload_mb = max_upload_mb.clamp(1, 1024 * 1024);
         if allow_uploads && (settings.upload_key.is_empty() || regenerate == Some(true)) {
@@ -247,6 +294,5 @@ fn generate_upload_key() -> String {
 
 #[tauri::command]
 pub fn suggest_port() -> Option<u16> {
-    (8000..=8080)
-        .find(|port| std::net::TcpListener::bind(("127.0.0.1", *port)).is_ok())
+    (8000..=8080).find(|port| std::net::TcpListener::bind(("127.0.0.1", *port)).is_ok())
 }

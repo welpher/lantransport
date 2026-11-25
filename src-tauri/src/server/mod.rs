@@ -72,7 +72,11 @@ impl ServerHandle {
             return Err(StartError::InvalidRoot);
         }
 
-        let host = if allow_lan { Ipv4Addr::UNSPECIFIED } else { Ipv4Addr::LOCALHOST };
+        let host = if allow_lan {
+            Ipv4Addr::UNSPECIFIED
+        } else {
+            Ipv4Addr::LOCALHOST
+        };
         let listener = TcpListener::bind((host, port)).map_err(|error| match error.kind() {
             std::io::ErrorKind::AddrInUse => StartError::PortInUse,
             std::io::ErrorKind::PermissionDenied => StartError::PermissionDenied,
@@ -120,7 +124,11 @@ impl ServerHandle {
     }
 
     pub fn set_upload(&self, config: UploadConfig) {
-        *self.context.upload.write().unwrap_or_else(|error| error.into_inner()) = config;
+        *self
+            .context
+            .upload
+            .write()
+            .unwrap_or_else(|error| error.into_inner()) = config;
     }
 }
 
@@ -176,7 +184,9 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
         .peer_addr()
         .map_or(IpAddr::from(Ipv4Addr::UNSPECIFIED), |addr| addr.ip());
 
-    let Ok(read_stream) = stream.try_clone() else { return };
+    let Ok(read_stream) = stream.try_clone() else {
+        return;
+    };
     let mut reader = BufReader::new(read_stream);
 
     for _ in 0..MAX_REQUESTS_PER_CONNECTION {
@@ -207,7 +217,8 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
                 let keep_alive = request.wants_keep_alive();
                 let head_only = request.method == Method::Head;
                 let mut response = route::handle(&request, &context, peer);
-                if http::write_response(&mut stream, keep_alive, head_only, &mut response).is_err() {
+                if http::write_response(&mut stream, keep_alive, head_only, &mut response).is_err()
+                {
                     return;
                 }
                 if !keep_alive {

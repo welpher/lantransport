@@ -40,11 +40,16 @@ impl Default for Settings {
 
 impl Settings {
     pub fn file(app: &AppHandle) -> Option<PathBuf> {
-        app.path().app_config_dir().ok().map(|dir| dir.join("settings.json"))
+        app.path()
+            .app_config_dir()
+            .ok()
+            .map(|dir| dir.join("settings.json"))
     }
 
     pub fn load(app: &AppHandle) -> Self {
-        let Some(path) = Self::file(app) else { return Self::default() };
+        let Some(path) = Self::file(app) else {
+            return Self::default();
+        };
         let mut settings: Self = fs::read_to_string(path)
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())

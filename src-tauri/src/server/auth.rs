@@ -17,7 +17,9 @@ pub struct Auth {
 
 impl Auth {
     pub fn new(password: Option<String>) -> Self {
-        Self { password: password.filter(|value| !value.is_empty()) }
+        Self {
+            password: password.filter(|value| !value.is_empty()),
+        }
     }
 
     pub fn required(&self) -> bool {
@@ -25,7 +27,9 @@ impl Auth {
     }
 
     pub fn check(&self, header: Option<&str>) -> bool {
-        let Some(expected) = &self.password else { return true };
+        let Some(expected) = &self.password else {
+            return true;
+        };
         let Some(encoded) = header.and_then(|value| value.strip_prefix("Basic ")) else {
             return false;
         };
@@ -65,7 +69,10 @@ pub struct AuthLimiter {
 
 impl AuthLimiter {
     pub fn blocked_for(&self, ip: IpAddr) -> Option<u64> {
-        let mut entries = self.entries.lock().unwrap_or_else(|error| error.into_inner());
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let entry = entries.get_mut(&ip)?;
         let until = entry.blocked_until?;
         let now = Instant::now();
@@ -81,7 +88,10 @@ impl AuthLimiter {
 
     pub fn note_failure(&self, ip: IpAddr) {
         let now = Instant::now();
-        let mut entries = self.entries.lock().unwrap_or_else(|error| error.into_inner());
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         if entries.len() > 1024 {
             entries.retain(|_, entry| {
                 entry.blocked_until.is_some_and(|until| until > now)
@@ -101,7 +111,10 @@ impl AuthLimiter {
     }
 
     pub fn note_success(&self, ip: IpAddr) {
-        let mut entries = self.entries.lock().unwrap_or_else(|error| error.into_inner());
+        let mut entries = self
+            .entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         entries.remove(&ip);
     }
 }

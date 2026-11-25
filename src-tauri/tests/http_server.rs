@@ -30,14 +30,8 @@ fn start(root: &Path, password: Option<&str>) -> ServerHandle {
 }
 
 fn start_with_upload(root: &Path, password: Option<&str>, upload: UploadConfig) -> ServerHandle {
-    ServerHandle::start(
-        root,
-        0,
-        false,
-        password.map(str::to_string),
-        upload,
-    )
-    .expect("server starts")
+    ServerHandle::start(root, 0, false, password.map(str::to_string), upload)
+        .expect("server starts")
 }
 
 fn put(port: u16, query: &str, key: Option<&str>, body: &str) -> Reply {
@@ -53,7 +47,9 @@ fn put(port: u16, query: &str, key: Option<&str>, body: &str) -> Reply {
 
 fn send(port: u16, raw: &str) -> Reply {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     stream.write_all(raw.as_bytes()).unwrap();
     let mut raw_reply = Vec::new();
     stream.read_to_end(&mut raw_reply).unwrap();
@@ -73,7 +69,11 @@ fn send(port: u16, raw: &str) -> Reply {
         .filter_map(|line| line.split_once(':'))
         .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
         .collect();
-    Reply { status, headers, body }
+    Reply {
+        status,
+        headers,
+        body,
+    }
 }
 
 fn get(port: u16, path: &str) -> Reply {
@@ -104,7 +104,12 @@ fn lists_visible_entries_and_hides_dotfiles() {
     assert!(page.contains("hello.txt"));
     assert!(page.contains("sub/"));
     assert!(!page.contains(".env"));
-    assert!(reply.header("content-security-policy").unwrap().contains("nonce-"));
+    assert!(
+        reply
+            .header("content-security-policy")
+            .unwrap()
+            .contains("nonce-")
+    );
 }
 
 #[test]
@@ -174,10 +179,12 @@ fn download_forces_attachment() {
     let server = start(&root, None);
     let reply = get(server.port, "/hello.txt?download=1");
     assert_eq!(reply.status, 200);
-    assert!(reply
-        .header("content-disposition")
-        .unwrap()
-        .starts_with("attachment;"));
+    assert!(
+        reply
+            .header("content-disposition")
+            .unwrap()
+            .starts_with("attachment;")
+    );
 }
 
 #[test]
@@ -238,7 +245,11 @@ fn upload_server(name: &str) -> (std::path::PathBuf, ServerHandle) {
     let server = start_with_upload(
         &root,
         None,
-        UploadConfig { enabled: true, key: "k3y".into(), max_bytes: 1024 },
+        UploadConfig {
+            enabled: true,
+            key: "k3y".into(),
+            max_bytes: 1024,
+        },
     );
     (root, server)
 }
@@ -246,9 +257,17 @@ fn upload_server(name: &str) -> (std::path::PathBuf, ServerHandle) {
 #[test]
 fn uploads_with_valid_key() {
     let (root, server) = upload_server("upload");
-    let reply = put(server.port, "dir=%2Fsub%2F&name=note+one.txt", Some("k3y"), "payload");
+    let reply = put(
+        server.port,
+        "dir=%2Fsub%2F&name=note+one.txt",
+        Some("k3y"),
+        "payload",
+    );
     assert_eq!(reply.status, 201);
-    assert_eq!(std::fs::read_to_string(root.join("sub/note one.txt")).unwrap(), "payload");
+    assert_eq!(
+        std::fs::read_to_string(root.join("sub/note one.txt")).unwrap(),
+        "payload"
+    );
 
     let page = get(server.port, "/sub/");
     assert!(page.text().contains("note one.txt"));
@@ -257,20 +276,45 @@ fn uploads_with_valid_key() {
 #[test]
 fn upload_collision_gets_suffix() {
     let (root, server) = upload_server("collision");
-    assert_eq!(put(server.port, "dir=%2F&name=hello.txt", Some("k3y"), "new").status, 201);
-    assert_eq!(std::fs::read_to_string(root.join("hello (1).txt")).unwrap(), "new");
-    assert_eq!(std::fs::read_to_string(root.join("hello.txt")).unwrap(), "hello");
+    assert_eq!(
+        put(server.port, "dir=%2F&name=hello.txt", Some("k3y"), "new").status,
+        201
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("hello (1).txt")).unwrap(),
+        "new"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("hello.txt")).unwrap(),
+        "hello"
+    );
 }
 
 #[test]
 fn upload_rejects_bad_key_and_names() {
     let (root, server) = upload_server("upload-bad");
-    assert_eq!(put(server.port, "dir=%2F&name=x.txt", Some("nope"), "x").status, 403);
-    assert_eq!(put(server.port, "dir=%2F&name=x.txt", None, "x").status, 403);
-    assert_eq!(put(server.port, "dir=%2F&name=..%2Fevil", Some("k3y"), "x").status, 400);
-    assert_eq!(put(server.port, "dir=%2F..%2F&name=x.txt", Some("k3y"), "x").status, 404);
+    assert_eq!(
+        put(server.port, "dir=%2F&name=x.txt", Some("nope"), "x").status,
+        403
+    );
+    assert_eq!(
+        put(server.port, "dir=%2F&name=x.txt", None, "x").status,
+        403
+    );
+    assert_eq!(
+        put(server.port, "dir=%2F&name=..%2Fevil", Some("k3y"), "x").status,
+        400
+    );
+    assert_eq!(
+        put(server.port, "dir=%2F..%2F&name=x.txt", Some("k3y"), "x").status,
+        404
+    );
     assert!(std::fs::read_dir(&root).unwrap().all(|entry| {
-        !entry.unwrap().file_name().to_string_lossy().starts_with(".lantransport")
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".lantransport")
     }));
 }
 
@@ -278,9 +322,15 @@ fn upload_rejects_bad_key_and_names() {
 fn upload_respects_size_limit_and_switch() {
     let (_, server) = upload_server("upload-size");
     let big = "a".repeat(2048);
-    assert_eq!(put(server.port, "dir=%2F&name=big.bin", Some("k3y"), &big).status, 413);
+    assert_eq!(
+        put(server.port, "dir=%2F&name=big.bin", Some("k3y"), &big).status,
+        413
+    );
 
     let root = temp_root("upload-off");
     let off = start(&root, None);
-    assert_eq!(put(off.port, "dir=%2F&name=x.txt", Some("k3y"), "x").status, 403);
+    assert_eq!(
+        put(off.port, "dir=%2F&name=x.txt", Some("k3y"), "x").status,
+        403
+    );
 }
