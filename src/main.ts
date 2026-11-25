@@ -71,7 +71,7 @@ const elements = {
   maxUpload: $<HTMLInputElement>("max-upload"),
   uploadHint: $("upload-hint"),
   error: $("error"),
-  primary: $<HTMLButtonElement>("primary"),
+  run: $<HTMLButtonElement>("run"),
   runningCard: $("running-card"),
   sharingLabel: $("sharing-label"),
   sharingFolder: $("sharing-folder"),
@@ -81,7 +81,6 @@ const elements = {
   shareKey: $("share-key"),
   copyShareKey: $<HTMLButtonElement>("copy-share-key"),
   shareUploadLink: $<HTMLButtonElement>("share-upload-link"),
-  stop: $<HTMLButtonElement>("stop"),
   urls: $<HTMLUListElement>("urls"),
   qrWrap: $("qr-wrap"),
   qr: $<HTMLImageElement>("qr"),
@@ -284,7 +283,8 @@ function apply(): void {
   elements.shareKeyLabel.textContent = label.uploadKey;
   elements.copyShareKey.textContent = label.copyKey;
   elements.shareUploadLink.textContent = label.copyLink;
-  elements.stop.textContent = label.stop;
+  elements.run.textContent = running ? label.stop : label.start;
+  elements.run.classList.toggle("stop", running);
   elements.open.textContent = label.open;
   elements.autoStartLabel.textContent = label.autoStart;
   elements.trayLabel.textContent = label.tray;
@@ -305,7 +305,6 @@ function apply(): void {
     && Boolean(settings?.upload_key);
   elements.uploadShare.hidden = !shareUploads;
   elements.shareKey.textContent = settings?.upload_key ?? "";
-  elements.stop.disabled = busy;
   elements.allowUploads.checked = settings?.allow_uploads ?? false;
   elements.uploadSettings.hidden = !(settings?.allow_uploads ?? false);
   elements.uploadKey.textContent = settings?.upload_key || "—";
@@ -318,8 +317,7 @@ function apply(): void {
   elements.status.classList.toggle("on", running);
   elements.statusText.textContent = busy ? label.starting : running ? label.running : label.stopped;
 
-  elements.primary.textContent = label.start;
-  elements.primary.disabled = busy || running || draft.shares.length === 0;
+  elements.run.disabled = busy || (!running && draft.shares.length === 0);
 
   for (const control of [
     elements.addFolder,
@@ -578,8 +576,10 @@ elements.tabSettings.addEventListener("click", () => {
   tab = "settings";
   apply();
 });
-elements.primary.addEventListener("click", () => void start());
-elements.stop.addEventListener("click", () => void stop());
+elements.run.addEventListener("click", () => {
+  if (snapshot?.running) void stop();
+  else void start();
+});
 elements.password.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !snapshot?.running) void start();
 });

@@ -79,6 +79,14 @@ select {
   cursor: pointer;
 }
 .stack { display: flex; flex-direction: column; gap: 14px; }
+.tabbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.run-btn { min-width: 132px; }
 .tabs {
   display: flex;
   gap: 4px;

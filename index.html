@@ -23,10 +23,13 @@
       </header>
 
       <main class="stack">
-        <nav class="tabs" role="tablist">
-          <button id="tab-share" class="tab" role="tab"></button>
-          <button id="tab-settings" class="tab" role="tab"></button>
-        </nav>
+        <div class="tabbar">
+          <nav class="tabs" role="tablist">
+            <button id="tab-share" class="tab" role="tab"></button>
+            <button id="tab-settings" class="tab" role="tab"></button>
+          </nav>
+          <button id="run" class="primary run-btn"></button>
+        </div>
 
         <div id="error" class="error" hidden></div>
 
@@ -38,7 +41,6 @@
               <button id="add-folder" class="btn small" type="button"></button>
             </div>
             <div id="folders" class="folders"></div>
-            <button id="primary" class="primary"></button>
           </section>
 
           <section id="running-card" class="card" hidden>
@@ -64,7 +66,6 @@
               <button id="copy-share-key" class="btn"></button>
               <button id="share-upload-link" class="btn ghost"></button>
             </div>
-            <button id="stop" class="primary stop"></button>
           </section>
         </div>
 
