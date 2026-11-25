@@ -1,0 +1,235 @@
+//! The embedded read-only HTTP server.
+
+pub mod auth;
+pub mod http;
+pub mod lan;
+pub mod listing;
+pub mod paths;
+pub mod route;
+pub mod upload;
+
+use std::io::{BufReader, Write};
+use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, SystemTime};
+
+use crate::server::http::{Method, ReadOutcome};
+use crate::server::upload::UploadConfig;
+
+const MAX_CONNECTIONS: usize = 64;
+const MAX_REQUESTS_PER_CONNECTION: usize = 100;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Lang {
+    Zh,
+    En,
+}
+
+impl Lang {
+    pub fn from_u8(value: u8) -> Self {
+        if value == 1 { Lang::En } else { Lang::Zh }
+    }
+
+}
+
+pub struct ServerContext {
+    pub root: PathBuf,
+    pub auth: auth::Auth,
+    pub limiter: auth::AuthLimiter,
+    pub upload: RwLock<UploadConfig>,
+    pub upload_limiter: auth::AuthLimiter,
+    pub lang: Arc<AtomicU8>,
+}
+
+pub struct ServerHandle {
+    pub port: u16,
+    pub urls: Vec<String>,
+    pub started_at: SystemTime,
+    shutdown: Arc<AtomicBool>,
+    context: Arc<ServerContext>,
+    thread: Option<JoinHandle<()>>,
+}
+
+#[derive(Debug)]
+pub enum StartError {
+    InvalidRoot,
+    PortInUse,
+    PermissionDenied,
+    Io(String),
+}
+
+impl std::fmt::Display for StartError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StartError::InvalidRoot => write!(f, "folder does not exist or is not a folder"),
+            StartError::PortInUse => write!(f, "port is already in use"),
+            StartError::PermissionDenied => write!(f, "permission denied"),
+            StartError::Io(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl ServerHandle {
+    pub fn start(
+        root: &Path,
+        port: u16,
+        allow_lan: bool,
+        password: Option<String>,
+        upload: UploadConfig,
+        lang: Arc<AtomicU8>,
+    ) -> Result<Self, StartError> {
+        let root = std::fs::canonicalize(root).map_err(|_| StartError::InvalidRoot)?;
+        if !root.is_dir() {
+            return Err(StartError::InvalidRoot);
+        }
+
+        let host = if allow_lan { Ipv4Addr::UNSPECIFIED } else { Ipv4Addr::LOCALHOST };
+        let listener = TcpListener::bind((host, port)).map_err(|error| match error.kind() {
+            std::io::ErrorKind::AddrInUse => StartError::PortInUse,
+            std::io::ErrorKind::PermissionDenied => StartError::PermissionDenied,
+            _ => StartError::Io(error.to_string()),
+        })?;
+        let port = listener
+            .local_addr()
+            .map_err(|error| StartError::Io(error.to_string()))?
+            .port();
+        listener
+            .set_nonblocking(true)
+            .map_err(|error| StartError::Io(error.to_string()))?;
+
+        let context = Arc::new(ServerContext {
+            root,
+            auth: auth::Auth::new(password),
+            limiter: auth::AuthLimiter::default(),
+            upload: RwLock::new(upload),
+            upload_limiter: auth::AuthLimiter::default(),
+            lang,
+        });
+        let context_for_handle = Arc::clone(&context);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicUsize::new(0));
+        let stop_flag = Arc::clone(&shutdown);
+        let thread = thread::Builder::new()
+            .name("lantransport-http".into())
+            .spawn(move || accept_loop(listener, context, stop_flag, active))
+            .map_err(|error| StartError::Io(error.to_string()))?;
+
+        Ok(Self {
+            port,
+            urls: lan::urls(port, allow_lan),
+            started_at: SystemTime::now(),
+            shutdown,
+            context: Arc::clone(&context_for_handle),
+            thread: Some(thread),
+        })
+    }
+
+    pub fn stop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+
+    pub fn set_upload(&self, config: UploadConfig) {
+        *self.context.upload.write().unwrap_or_else(|error| error.into_inner()) = config;
+    }
+}
+
+impl Drop for ServerHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+fn accept_loop(
+    listener: TcpListener,
+    context: Arc<ServerContext>,
+    shutdown: Arc<AtomicBool>,
+    active: Arc<AtomicUsize>,
+) {
+    while !shutdown.load(Ordering::Relaxed) {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
+                    continue;
+                }
+                active.fetch_add(1, Ordering::Relaxed);
+                let context = Arc::clone(&context);
+                let active_guard = ActiveGuard(Arc::clone(&active));
+                let _ = thread::Builder::new()
+                    .name("lantransport-conn".into())
+                    .spawn(move || {
+                        let _guard = active_guard;
+                        handle_connection(stream, context);
+                    });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(100));
+            }
+            Err(_) => thread::sleep(Duration::from_millis(100)),
+        }
+    }
+}
+
+struct ActiveGuard(Arc<AtomicUsize>);
+
+impl Drop for ActiveGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(60)));
+    let _ = stream.set_nodelay(true);
+    let peer: IpAddr = stream
+        .peer_addr()
+        .map_or(IpAddr::from(Ipv4Addr::UNSPECIFIED), |addr| addr.ip());
+
+    let Ok(read_stream) = stream.try_clone() else { return };
+    let mut reader = BufReader::new(read_stream);
+
+    for _ in 0..MAX_REQUESTS_PER_CONNECTION {
+        match http::read_request(&mut reader) {
+            Ok(ReadOutcome::Eof) => break,
+            Ok(ReadOutcome::Malformed(status)) => {
+                let _ = http::status_line_only(&mut stream, status);
+                break;
+            }
+            Ok(ReadOutcome::Request(request)) => {
+                if request.method == Method::Put {
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(300)));
+                    if request
+                        .header("expect")
+                        .is_some_and(|value| value.eq_ignore_ascii_case("100-continue"))
+                    {
+                        let _ = stream.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
+                        let _ = stream.flush();
+                    }
+                    let mut response = if upload::split_path(&request.target) == "/upload" {
+                        upload::handle(&mut reader, &request, &context, peer)
+                    } else {
+                        http::Response::empty(405).header("Allow", "GET, HEAD, PUT")
+                    };
+                    let _ = http::write_response(&mut stream, false, false, &mut response);
+                    break;
+                }
+                let keep_alive = request.wants_keep_alive();
+                let head_only = request.method == Method::Head;
+                let mut response = route::handle(&request, &context, peer);
+                if http::write_response(&mut stream, keep_alive, head_only, &mut response).is_err() {
+                    return;
+                }
+                if !keep_alive {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+}

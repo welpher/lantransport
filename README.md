@@ -1,0 +1,88 @@
+# LanTransport
+
+Share files across your local network from a small desktop app.
+
+Pick a folder, press **Start sharing**, and anyone on the same Wi‑Fi can open the
+link in a browser to browse and download. Read-only by default. People you give
+an **upload key** to can also drop files into the folder they are viewing.
+
+No account, no cloud, no relay: the files never leave your network.
+
+```
+┌──────────────────────────────────────────┐
+│  LanTransport               ●  Sharing   │
+│                                          │
+│  Folder                                  │
+│  /Users/me/Downloads           [Choose…] │
+│  Port 8000      [x] Allow LAN access     │
+│                                          │
+│  [x] Allow uploads with a key            │
+│      k7m3qp9x2f   [Copy] [Regenerate]    │
+│                                          │
+│  http://192.168.1.24:8000  [Copy]        │
+└──────────────────────────────────────────┘
+```
+
+## Features
+
+- **Browser UI** for any phone, tablet or computer — no app needed on the other side
+- **Read-only by default**: browse, preview, download; Range requests so downloads resume
+- **Optional password** for browsing (HTTP Basic, username `share`)
+- **Key-gated uploads**: rotate the key anytime; uploads land in the folder being viewed
+- **QR code** for the LAN link, one click to copy
+- **Tray app**: keeps sharing while the window is closed; start/stop from the tray
+- **Cross-platform**: macOS (Intel & Apple Silicon), Windows, Linux
+- Light/dark follows the system, UI in English and 中文
+- Small installers: the app uses the system webview instead of bundling a browser
+
+## Install
+
+Download the installer for your platform from [Releases](../../releases).
+
+| Platform | File |
+|---|---|
+| macOS | `.dmg` (Universal) |
+| Windows | `.exe` (NSIS) |
+| Linux | `.AppImage`, `.deb`, `.rpm` |
+
+Builds are not code-signed yet, so macOS Gatekeeper and Windows SmartScreen will
+warn on first launch. On macOS: right-click the app → **Open**. Verify the
+checksums published with each release if you like.
+
+## How it works
+
+A small HTTP server is embedded in the app (Rust, no runtime to install). The UI
+is Tauri 2 + the system webview. Requests are served straight from the chosen
+folder; nothing is copied or indexed.
+
+Security model, limits and known caveats live in [SECURITY.md](SECURITY.md).
+
+## Development
+
+Prerequisites: Node 20+, pnpm, Rust stable, and the
+[Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+
+```bash
+pnpm install
+pnpm tauri dev          # desktop app with hot reload
+pnpm tauri build        # installers in src-tauri/target/release/bundle
+cargo test --manifest-path src-tauri/Cargo.toml
+pnpm icons              # regenerate app/tray icons from assets/*.svg
+```
+
+Layout:
+
+```
+src/                     UI (vanilla TypeScript + Vite)
+src-tauri/src/server/    embedded HTTP server (listing, downloads, uploads, auth)
+src-tauri/src/           Tauri shell: tray, settings, commands
+```
+
+## Roadmap
+
+See [docs/ROADMAP.md](docs/ROADMAP.md). Near-term: code signing, auto-update,
+per-folder links, upload history and a clipboard channel.
+
+## License
+
+MIT © 2026 welpher

@@ -1,0 +1,45 @@
+# Security
+
+## Reporting a vulnerability
+
+Please do not open a public issue. Use GitHub's **Report a vulnerability**
+(Security → Advisories) or email the maintainer listed in `Cargo.toml`.
+
+## Threat model
+
+LanTransport is built for trusted local networks. It is not a way to expose
+files to the public internet.
+
+- **No TLS.** Traffic, including the browsing password and upload key, is sent in
+  clear text over the LAN.
+- **Browsing** is unauthenticated unless a password is set. Anyone who can reach
+  the port can read the shared folder.
+- **Uploads** require the upload key. It is compared in constant time and sent in
+  the `X-Upload-Key` header (or a `?key=` link parameter). Keys are shown in the
+  desktop app and stored in the page's `localStorage`.
+- **Password storage**: the browsing password is only saved when *Remember
+  password* is checked, in the app config file with `0600` permissions on Unix.
+  It is not hashed.
+- **Path confinement**: every request is resolved with `canonicalize` and must
+  stay inside the shared root. Hidden entries (`dotfiles`) are never listed or
+  served, and upload file names are sanitized. Symlinks pointing outside the root
+  are refused.
+- **Writes** are limited to uploads: no delete, rename or overwrite. Uploads are
+  written to a hidden temp file and renamed into place; name collisions get a
+  ` (1)` suffix.
+
+## Hardening checklist
+
+- Share only folders you are comfortable exposing to your network.
+- Set a browsing password on untrusted networks (cafés, hotels, conferences).
+- Rotate the upload key after a one-off exchange.
+- Prefer **Allow LAN access** off when only this machine needs the files.
+- Keep the app updated.
+
+## Known limits
+
+- No request-body limits beyond the configured max upload size.
+- No TLS, no CORS, no rate limit on successful uploads (only failed keys are
+  throttled).
+- Windows reserved device names are rejected; other platform-specific filename
+  quirks may still cause a failed upload.
