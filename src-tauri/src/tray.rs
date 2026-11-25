@@ -59,8 +59,8 @@ pub fn refresh(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
     tray.set_menu(Some(menu))?;
     let snapshot = state::snapshot(app);
-    let tooltip = match snapshot.urls.first() {
-        Some(url) if snapshot.running => format!("LanTransport · {url}"),
+    let tooltip = match snapshot.running.then(|| share_url(&snapshot.urls)) {
+        Some(Some(url)) => format!("LanTransport · {url}"),
         _ => "LanTransport".to_string(),
     };
     tray.set_tooltip(Some(tooltip))?;
@@ -110,9 +110,16 @@ fn handle_menu(app: &AppHandle, id: &str) {
 
 fn copy_link(app: &AppHandle) {
     let snapshot = state::snapshot(app);
-    if let Some(url) = snapshot.urls.first() {
-        let _ = app.clipboard().write_text(url.clone());
+    if let Some(url) = share_url(&snapshot.urls) {
+        let _ = app.clipboard().write_text(url);
     }
+}
+
+fn share_url(urls: &[String]) -> Option<String> {
+    urls.iter()
+        .find(|url| !url.contains("127.0.0.1"))
+        .or_else(|| urls.first())
+        .cloned()
 }
 
 fn toggle(app: &AppHandle) {

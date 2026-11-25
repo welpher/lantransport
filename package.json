@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "icons": "node scripts/make-icons.mjs && tauri icon assets/icon.png",
-    "check": "tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml"
+    "check": "tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -26,5 +27,6 @@
     "vite": "^8.0.16"
   },
   "description": "Share files across your local network, from a small cross-platform desktop app",
-  "license": "MIT"
+  "license": "MIT",
+  "packageManager": "pnpm@12.18.0"
 }
