@@ -34,6 +34,40 @@ pub fn human_size(n: u64) -> String {
     format!("{n} B")
 }
 
+pub fn previewable(name: &str) -> bool {
+    let extension = std::path::Path::new(name)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "avif"
+            | "bmp"
+            | "svg"
+            | "pdf"
+            | "mp4"
+            | "webm"
+            | "mov"
+            | "m4v"
+            | "mp3"
+            | "wav"
+            | "m4a"
+            | "ogg"
+            | "flac"
+            | "txt"
+            | "md"
+            | "log"
+            | "json"
+            | "csv"
+    )
+}
+
 pub fn ext_label(name: &str, is_dir: bool) -> String {
     if is_dir {
         return "DIR".into();
@@ -115,12 +149,20 @@ pub fn render(
             } else {
                 String::new()
             };
+            let preview = if previewable(&entry.name) {
+                format!(
+                    "<a class='btn ghost' href='{href}' target='_blank' rel='noopener noreferrer'>{}</a>",
+                    t("page.preview")
+                )
+            } else {
+                String::new()
+            };
             let modified = file.modified.map_or_else(
                 || "—".to_string(),
                 |time| time.format("%Y-%m-%d %H:%M").to_string(),
             );
             rows.push_str(&format!(
-                "<tr data-name='{}' data-href='{download}'><td><div class='name'><span class='ext'>{}</span><a href='{href}'>{}</a>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{download}'>{}</a></td></tr>",
+                "<tr data-name='{}' data-href='{download}'><td><div class='name'><span class='ext'>{}</span><span class='fname'>{}</span>{source}</div></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'>{preview}<a class='btn' href='{download}'>{}</a></td></tr>",
                 escape_html(&entry.name.to_lowercase()),
                 escape_html(&ext_label(&entry.name, false)),
                 escape_html(&entry.name),
@@ -385,6 +427,7 @@ tbody tr:hover { background: var(--row-hover); }
 .name { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .name a { color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
 .name a:hover { color: var(--accent); }
+.fname { color: var(--text); overflow-wrap: anywhere; }
 .ext {
   flex: 0 0 auto;
   font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -400,7 +443,7 @@ tbody tr:hover { background: var(--row-hover); }
 }
 .dir .ext { color: var(--accent); border-color: transparent; background: rgba(37, 99, 235, .12); }
 .size, .time { color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.act { text-align: right; white-space: nowrap; }
+.act { text-align: right; white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 .btn {
   display: inline-block;
   font-size: 13px;
@@ -443,7 +486,8 @@ tbody tr:hover { background: var(--row-hover); }
   .list-card td.size, .list-card td.time { display: inline; font-size: 12px; margin-right: 6px; }
   .list-card td.size::after { content: " ·"; color: var(--muted); }
   .list-card td.act { margin-top: 8px; }
-  .list-card td.act .btn { display: block; text-align: center; }
+  .list-card td.act { gap: 8px; }
+  .list-card td.act .btn { display: block; flex: 1 1 auto; text-align: center; }
   .list-card .name { flex-wrap: wrap; }
 }
 

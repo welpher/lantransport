@@ -101,5 +101,6 @@
   "upload.open": "Upload",
   "upload.close": "Close",
   "upload.dropping": "Drop files to upload",
-  "page.all_files": "Shared files"
+  "page.all_files": "Shared files",
+  "page.preview": "Preview"
 }

@@ -101,5 +101,6 @@
   "upload.open": "上传",
   "upload.close": "关闭",
   "upload.dropping": "松开即可上传",
-  "page.all_files": "共享文件"
+  "page.all_files": "共享文件",
+  "page.preview": "预览"
 }
