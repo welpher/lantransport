@@ -4,27 +4,67 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing tag to build, e.g. v0.1.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+env:
+  RELEASE_TAG: ${{ github.event.inputs.version || github.ref_name }}
+
+concurrency:
+  group: release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  checks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
+      - run: pnpm install --frozen-lockfile
+      - name: Version matches the tag
+        run: |
+          node -e "const v = require('./package.json').version; const tag = process.env.RELEASE_TAG.replace(/^v/, ''); if (v !== tag) { console.error('package.json ' + v + ' != tag ' + tag); process.exit(1); }"
+      - run: pnpm build
+      - run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
   create-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Create the draft release once
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft \
-              --title "LanTransport $GITHUB_REF_NAME" \
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "LanTransport $RELEASE_TAG" \
               --notes "See the assets below to download and install LanTransport for your platform."
 
   release:
-    needs: create-release
+    needs: [checks, create-release]
     strategy:
       fail-fast: false
       matrix:
@@ -37,9 +77,11 @@ jobs:
             args: ""
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -59,8 +101,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "LanTransport ${{ github.ref_name }}"
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "LanTransport ${{ env.RELEASE_TAG }}"
           releaseBody: "See the assets below to download and install LanTransport for your platform."
           releaseDraft: true
           prerelease: false
