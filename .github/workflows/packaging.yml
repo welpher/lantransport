@@ -19,6 +19,7 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -38,9 +39,7 @@ jobs:
           git commit -m "chore(packaging): sync manifests for $TAG"
           git push
       - name: Update the Homebrew tap
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
-        env:
-          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        if: env.TAP_TOKEN != ''
         run: |
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/welpher/homebrew-tap.git" /tmp/tap
           cp packaging/homebrew/lantransport.rb /tmp/tap/Casks/lantransport.rb
