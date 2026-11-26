@@ -19,8 +19,6 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAP_APP_ID: ${{ secrets.TAP_APP_ID }}
-      TAP_APP_PRIVATE_KEY: ${{ secrets.TAP_APP_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -41,11 +39,11 @@ jobs:
           git push
       - name: Mint a token for the tap repository
         id: tap
-        if: env.TAP_APP_ID != ''
-        uses: actions/create-github-app-token@v3
+        if: vars.TAP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3.4.0
         with:
-          app-id: ${{ env.TAP_APP_ID }}
-          private-key: ${{ env.TAP_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.TAP_CLIENT_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
           owner: welpher
           repositories: homebrew-tap
       - name: Update the Homebrew tap
