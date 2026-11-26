@@ -28,6 +28,7 @@ percent-encoding = "2"
 mime_guess = "2"
 if-addrs = "0.14"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tauri-plugin-notification = "2.8.1"
 
 
 [profile.release]

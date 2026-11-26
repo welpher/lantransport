@@ -104,5 +104,6 @@
   "upload.set_key": "Set upload key",
   "upload.clear": "Clear upload key",
   "page.sort": "Sort",
-  "upload.retry": "Retry failed"
+  "upload.retry": "Retry failed",
+  "notify.start_failed": "Sharing could not start: {reason}"
 }
