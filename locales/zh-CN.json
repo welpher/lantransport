@@ -109,5 +109,10 @@
   "ui.upload_qr": "上传链接二维码",
   "ui.port_available": "端口可用",
   "ui.port_in_use": "端口被占用",
-  "ui.network_changed": "网络已变化，请使用新地址重新扫码"
+  "ui.network_changed": "网络已变化，请使用新地址重新扫码",
+  "ui.theme": "主题",
+  "ui.theme_auto": "自动",
+  "ui.theme_light": "浅色",
+  "ui.theme_dark": "深色",
+  "page.refresh": "刷新"
 }

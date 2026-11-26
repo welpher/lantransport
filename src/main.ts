@@ -17,6 +17,7 @@ interface Settings {
   upload_key: string;
   max_upload_mb: number;
   locale: string;
+  theme: string;
 }
 
 interface Snapshot {
@@ -48,6 +49,7 @@ const elements = {
   connectionLabel: $("connection-label"),
   uploadsGroupLabel: $("uploads-label"),
   behaviorLabel: $("behavior-label"),
+  theme: $<HTMLSelectElement>("theme"),
   settingsLocked: $("settings-locked"),
   setupCard: $("setup-card"),
   foldersLabel: $("folders-label"),
@@ -211,6 +213,10 @@ function text() {
     groupConnection: t("ui.group_connection"),
     groupUploads: t("ui.group_uploads"),
     groupBehavior: t("ui.group_behavior"),
+    theme: t("ui.theme"),
+    themeAuto: t("ui.theme_auto"),
+    themeLight: t("ui.theme_light"),
+    themeDark: t("ui.theme_dark"),
     settingsLocked: t("ui.settings_locked"),
     networkChanged: t("ui.network_changed"),
     security: t("ui.security"),
@@ -333,6 +339,17 @@ function apply(): void {
   elements.open.textContent = label.open;
   elements.autoStartLabel.textContent = label.autoStart;
   elements.trayLabel.textContent = label.tray;
+  elements.theme.setAttribute("aria-label", label.theme);
+  const themeOptions: Array<[string, string]> = [
+    ["auto", label.themeAuto],
+    ["light", label.themeLight],
+    ["dark", label.themeDark],
+  ];
+  for (const [value, text] of themeOptions) {
+    const option = elements.theme.querySelector(`option[value="${value}"]`);
+    if (option) option.textContent = text;
+  }
+  elements.theme.value = snapshot?.settings.theme ?? "auto";
   elements.security.textContent = label.security;
   elements.version.textContent = snapshot
     ? `${label.version} ${snapshot.version} · ${snapshot.platform}`
@@ -506,6 +523,24 @@ async function stop(): Promise<void> {
   apply();
 }
 
+function applyTheme(theme: string): void {
+  const root = document.documentElement;
+  if (theme === "light" || theme === "dark") {
+    root.dataset.theme = theme;
+  } else {
+    delete root.dataset.theme;
+  }
+  // Match the native title bar too; unavailable on some platforms, hence the catch.
+  void (async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().setTheme(theme === "auto" ? null : (theme as "light" | "dark"));
+    } catch {
+      /* preview browser or platform without theming */
+    }
+  })();
+}
+
 async function updatePrefs(patch: Record<string, unknown>): Promise<void> {
   try {
     snapshot = await invoke<Snapshot>("update_prefs", patch);
@@ -583,6 +618,16 @@ async function boot(): Promise<void> {
   if (stored !== locale) {
     snapshot = await invoke<Snapshot>("update_prefs", { locale });
   }
+
+  applyTheme(snapshot.settings.theme);
+
+  elements.theme.replaceChildren(
+    ...["auto", "light", "dark"].map((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      return option;
+    }),
+  );
 
   elements.locale.replaceChildren(
     ...LANGUAGES.map((language) => {
@@ -703,6 +748,10 @@ elements.autoStart.addEventListener("change", () => {
 });
 elements.tray.addEventListener("change", () => {
   void updatePrefs({ minimizeToTray: elements.tray.checked });
+});
+elements.theme.addEventListener("change", () => {
+  applyTheme(elements.theme.value);
+  void updatePrefs({ theme: elements.theme.value });
 });
 
 void boot();

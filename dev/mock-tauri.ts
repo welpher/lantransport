@@ -18,6 +18,7 @@ const snapshot = {
     upload_key: uploads ? "k7m3qp9x2f" : "",
     max_upload_mb: 4096,
     locale,
+    theme: (params.get("theme") as string) ?? "auto",
   },
   running,
   port: running ? 8000 : null,
