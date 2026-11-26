@@ -132,5 +132,6 @@
   "page.find_title": "搜索结果",
   "page.find_empty": "这个文件夹及其子文件夹里都没有匹配的文件。",
   "page.find_count": "{n} 个匹配",
-  "page.find_back": "返回文件夹"
+  "page.find_back": "返回文件夹",
+  "tray.logs": "打开日志目录"
 }

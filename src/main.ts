@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 
 import { LANGUAGES, detectLocale, normalizeLocale, translate } from "./i18n";
@@ -263,6 +263,15 @@ function folderName(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
+async function openFolder(path: string): Promise<void> {
+  try {
+    await invoke("open_folder_command", { path });
+  } catch (error) {
+    localError = String(error);
+    apply();
+  }
+}
+
 function humanSize(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
@@ -299,8 +308,7 @@ function renderRecent(): void {
     reveal.textContent = "↗";
     reveal.title = label.reveal;
     reveal.setAttribute("aria-label", label.reveal);
-    // openPath opens the folder itself; reveal would select it one level up.
-    reveal.addEventListener("click", () => void openPath(item.dir));
+    reveal.addEventListener("click", () => void openFolder(item.dir));
 
     row.append(name, meta, reveal);
     return row;
@@ -332,7 +340,7 @@ function renderFolders(): void {
     open.textContent = "↗";
     open.title = label.reveal;
     open.setAttribute("aria-label", label.reveal);
-    open.addEventListener("click", () => void openPath(path));
+    open.addEventListener("click", () => void openFolder(path));
     const remove = document.createElement("button");
     remove.className = "icon-btn";
     remove.textContent = "×";

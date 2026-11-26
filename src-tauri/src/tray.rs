@@ -68,9 +68,13 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         true,
         None::<&str>,
     )?;
+    let logs_item = MenuItem::with_id(app, "logs", t("tray.logs"), true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", t("tray.quit"), true, None::<&str>)?;
     let first_separator = PredefinedMenuItem::separator(app)?;
     let second_separator = PredefinedMenuItem::separator(app)?;
+    // Diagnostics get their own block so a slip of the mouse does not land on
+    // Quit, and the everyday items stay at the top.
+    let third_separator = PredefinedMenuItem::separator(app)?;
 
     Menu::with_items(
         app,
@@ -80,6 +84,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &first_separator,
             &toggle_item,
             &second_separator,
+            &logs_item,
+            &third_separator,
             &quit_item,
         ],
     )
@@ -90,9 +96,20 @@ fn handle_menu(app: &AppHandle, id: &str) {
         "show" => show_main(app),
         "copy" => copy_link(app),
         "toggle" => toggle(app),
+        "logs" => open_logs(app),
         "quit" => quit(app),
         _ => {}
     }
+}
+
+/// Opening the folder is more useful than the file: people send a screenshot of
+/// the tail, and the settings file lives one level up if it is ever needed.
+fn open_logs(app: &AppHandle) {
+    let Ok(dir) = app.path().app_log_dir() else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    commands::open_folder(&dir);
 }
 
 fn copy_link(app: &AppHandle) {
