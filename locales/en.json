@@ -105,5 +105,6 @@
   "upload.clear": "Clear upload key",
   "page.sort": "Sort",
   "upload.retry": "Retry failed",
-  "notify.start_failed": "Sharing could not start: {reason}"
+  "notify.start_failed": "Sharing could not start: {reason}",
+  "ui.upload_qr": "Upload link QR"
 }

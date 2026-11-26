@@ -81,6 +81,9 @@ const elements = {
   shareKey: $("share-key"),
   copyShareKey: $<HTMLButtonElement>("copy-share-key"),
   shareUploadLink: $<HTMLButtonElement>("share-upload-link"),
+  shareQr: $<HTMLButtonElement>("share-qr"),
+  shareQrWrap: $("share-qr-wrap"),
+  shareQrImg: $<HTMLImageElement>("share-qr-img"),
   urls: $<HTMLUListElement>("urls"),
   qrWrap: $("qr-wrap"),
   qr: $<HTMLImageElement>("qr"),
@@ -100,6 +103,7 @@ let tab: "share" | "settings" = "share";
 let busy = false;
 let localError: string | null = null;
 let qrFor: string | null = null;
+let shareQrUrl: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
 
@@ -158,6 +162,7 @@ function text() {
     uploadKey: t("ui.upload_key"),
     regenerate: t("ui.regenerate"),
     copyLink: t("ui.copy_link"),
+    uploadQr: t("ui.upload_qr"),
     maxUpload: t("ui.max_upload"),
     uploadHint: t("ui.upload_hint"),
     sharing: t("ui.sharing"),
@@ -283,6 +288,7 @@ function apply(): void {
   elements.shareKeyLabel.textContent = label.uploadKey;
   elements.copyShareKey.textContent = label.copyKey;
   elements.shareUploadLink.textContent = label.copyLink;
+  elements.shareQr.textContent = label.uploadQr;
   elements.run.textContent = running ? label.stop : label.start;
   elements.run.classList.toggle("stop", running);
   elements.open.textContent = label.open;
@@ -304,6 +310,10 @@ function apply(): void {
     && (settings?.allow_uploads ?? false)
     && Boolean(settings?.upload_key);
   elements.uploadShare.hidden = !shareUploads;
+  if (!shareUploads) {
+    elements.shareQrWrap.hidden = true;
+    shareQrUrl = null;
+  }
   elements.shareKey.textContent = settings?.upload_key ?? "";
   elements.allowUploads.checked = settings?.allow_uploads ?? false;
   elements.uploadSettings.hidden = !(settings?.allow_uploads ?? false);
@@ -607,6 +617,31 @@ elements.copyShareKey.addEventListener("click", () => {
   if (key) void flashCopy(key, elements.copyShareKey);
 });
 elements.shareUploadLink.addEventListener("click", copyUploadLink);
+elements.shareQr.addEventListener("click", () => {
+  void (async () => {
+    if (shareQrUrl) {
+      elements.shareQrWrap.hidden = true;
+      shareQrUrl = null;
+      return;
+    }
+    const key = snapshot?.settings.upload_key;
+    const base = selectedUrlValue();
+    if (!key || !base) {
+      localError = "not_running";
+      apply();
+      return;
+    }
+    const url = `${base}/?key=${encodeURIComponent(key)}`;
+    const dataUrl = await QRCode.toDataURL(url, {
+      margin: 1,
+      width: 336,
+      color: { dark: "#101828", light: "#ffffff" },
+    });
+    elements.shareQrImg.src = dataUrl;
+    elements.shareQrWrap.hidden = false;
+    shareQrUrl = url;
+  })();
+});
 elements.autoStart.addEventListener("change", () => {
   void updatePrefs({ autoStart: elements.autoStart.checked });
 });
