@@ -55,6 +55,7 @@ const elements = {
   folders: $("folders"),
   addFolder: $<HTMLButtonElement>("add-folder"),
   portLabel: $("port-label"),
+  portState: $("port-state"),
   port: $<HTMLInputElement>("port"),
   passwordLabel: $("password-label"),
   passwordHint: $("password-hint"),
@@ -106,6 +107,33 @@ let qrFor: string | null = null;
 let shareQrUrl: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
+let portTimer: number | null = null;
+let portStatus: "unknown" | "free" | "used" = "unknown";
+
+const portValue = (): number => Number(elements.port.value);
+
+async function checkPort(): Promise<void> {
+  if (snapshot?.running) return;
+  const port = portValue();
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    portStatus = "unknown";
+    apply();
+    return;
+  }
+  try {
+    const free = await invoke<boolean>("check_port", { port });
+    if (portValue() !== port) return;
+    portStatus = free ? "free" : "used";
+  } catch {
+    portStatus = "unknown";
+  }
+  apply();
+}
+
+function schedulePortCheck(): void {
+  if (portTimer !== null) window.clearTimeout(portTimer);
+  portTimer = window.setTimeout(() => void checkPort(), 350);
+}
 
 async function persistPassword(password: string | null): Promise<void> {
   try {
@@ -126,7 +154,7 @@ function schedulePasswordSave(): void {
 
 const draft = {
   shares: [] as string[],
-  port: 8000,
+  port: 8787,
   password: "",
 };
 
@@ -144,6 +172,8 @@ function text() {
     reveal: t("ui.reveal"),
     noFolder: t("ui.no_folder"),
     port: t("ui.port"),
+    portAvailable: t("ui.port_available"),
+    portInUse: t("ui.port_in_use"),
     password: t("ui.password"),
     passwordHint: t("ui.password_hint"),
     clear: t("ui.clear"),
@@ -273,6 +303,9 @@ function apply(): void {
   elements.foldersHint.textContent = label.foldersHint;
   elements.addFolder.textContent = label.addFolder;
   elements.portLabel.textContent = label.port;
+  elements.portState.textContent =
+    portStatus === "free" ? label.portAvailable : portStatus === "used" ? label.portInUse : "";
+  elements.portState.classList.toggle("warn", portStatus === "used");
   elements.passwordLabel.textContent = label.password;
   elements.passwordHint.textContent = label.passwordHint;
   elements.passwordClear.textContent = "×";
@@ -327,7 +360,9 @@ function apply(): void {
   elements.status.classList.toggle("on", running);
   elements.statusText.textContent = busy ? label.starting : running ? label.running : label.stopped;
 
-  elements.run.disabled = busy || (!running && draft.shares.length === 0);
+  const portInvalid = !Number.isInteger(portValue()) || portValue() < 1 || portValue() > 65535;
+  elements.run.disabled =
+    busy || (!running && (draft.shares.length === 0 || portInvalid || portStatus === "used"));
 
   for (const control of [
     elements.addFolder,
@@ -457,6 +492,7 @@ async function stop(): Promise<void> {
   try {
     snapshot = await invoke<Snapshot>("stop_sharing");
     syncInputs();
+    void checkPort();
   } catch (error) {
     localError = String(error);
   }
@@ -553,6 +589,7 @@ async function boot(): Promise<void> {
 
   syncInputs();
   apply();
+  void checkPort();
 
   await listen<Snapshot>("snapshot", (event) => {
     const wasRunning = snapshot?.running;
@@ -569,6 +606,8 @@ async function boot(): Promise<void> {
 }
 
 elements.addFolder.addEventListener("click", () => void addFolder());
+elements.port.addEventListener("input", schedulePortCheck);
+elements.port.addEventListener("blur", () => void checkPort());
 elements.password.addEventListener("input", schedulePasswordSave);
 elements.passwordClear.addEventListener("click", () => {
   elements.password.value = "";

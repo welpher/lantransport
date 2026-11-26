@@ -337,6 +337,11 @@ fn generate_upload_key() -> String {
 }
 
 #[tauri::command]
+pub fn check_port(port: u16) -> bool {
+    crate::server::lan::port_available(port)
+}
+
+#[tauri::command]
 pub fn update_password(
     app: AppHandle,
     state: State<'_, AppState>,
