@@ -233,7 +233,7 @@ pub fn render(
         <input id="up-files" type="file" multiple hidden>
       </div>
       <div class="up-status hint" id="up-status"></div>
-      <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
+      <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div><span class="progress-done" id="up-done">&#10003;</span></div>
       <button class="btn ghost" id="up-retry" type="button" hidden>{retry}</button>
     </div>
   </div>
@@ -313,6 +313,7 @@ pub fn render(
 <meta name='theme-color' content='#14171c' media='(prefers-color-scheme: dark)'>
 <title>{title} · LanTransport</title>
 <style>{STYLE}{UPLOAD_CSS}</style>
+<div class="topline" id="topline"></div>
 <div class="top">
   <div class="top-inner">
     <a class="brand" href="/">
@@ -455,6 +456,32 @@ function applySort(key, dir, remember) {
   if (sortSelect) sortSelect.value = key + ':' + dir;
 }
 
+// First rows slide in; a long folder only animates the first screenful.
+function staggerRows() {
+  const shown = rows.filter(row => row.offsetParent !== null).slice(0, 20);
+  shown.forEach((row, index) => {
+    row.style.animationDelay = (index * 12) + 'ms';
+    row.classList.add('row-in');
+  });
+}
+
+function setBusy(on) {
+  const line = document.getElementById('topline');
+  if (!line) return;
+  if (on) {
+    line.hidden = false;
+    line.classList.remove('done');
+    line.classList.toggle('run', true);
+    return;
+  }
+  line.classList.add('run');
+  line.classList.add('done');
+  window.setTimeout(() => {
+    line.hidden = true;
+    line.classList.remove('run', 'done');
+  }, 400);
+}
+
 function bindRows() {
   rows = Array.from(list.querySelectorAll('tr'));
   groups = { parent: [], dir: [], file: [] };
@@ -476,6 +503,7 @@ function bindRows() {
   if (selecting) attachPicks();
   applySort(state.key, state.dir, false);
   applyFilter();
+  staggerRows();
 }
 
 q.addEventListener('input', applyFilter);
@@ -506,9 +534,12 @@ if (sortSelect) {
 
 const refresh = document.getElementById('refresh');
 if (refresh) {
-  refresh.addEventListener('click', async () => {
+  // Re-reading the list in place keeps the scroll position and the search term;
+  // the upload flow calls the same function instead of reloading the page.
+  async function refreshListing() {
     if (refresh.classList.contains('busy')) return;
     refresh.classList.add('busy');
+    setBusy(true);
     try {
       const response = await fetch(location.href, { cache: 'no-store' });
       if (!response.ok) throw new Error('status ' + response.status);
@@ -524,8 +555,10 @@ if (refresh) {
       return;
     } finally {
       refresh.classList.remove('busy');
+      setBusy(false);
     }
-  });
+  }
+  refresh.addEventListener('click', () => { void refreshListing(); });
 }
 
 const selectModeBtn = document.getElementById('select-mode');
@@ -962,7 +995,33 @@ select:focus-visible { border-color: var(--accent); }
   .bar .btn { height: 36px; }
   .icon-btn { width: 36px; height: 36px; }
 }
+
+/* motion: short, purposeful, and off for anyone who asked for less */
+@keyframes row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.06); } 100% { transform: scale(1); } }
+.row-in { animation: row-in .22s ease-out both; }
+.btn.pop { animation: pop .35s ease-out; }
+.topline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  z-index: 60;
+  background: var(--accent);
+  transition: width .35s ease-out, opacity .3s ease-out;
+}
+.topline.run { width: 78%; }
+.topline.done { width: 100%; opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 "#;
+
 
 const UPLOAD_CSS: &str = r#"
 .upload { gap: 10px; }
@@ -975,7 +1034,23 @@ const UPLOAD_CSS: &str = r#"
 }
 .drop-copy { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 2px; }
 .drop-copy strong { font-size: 13.5px; color: var(--text); font-weight: 600; }
-.progress { height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.progress { position: relative; height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.progress.done { height: 18px; overflow: visible; }
+.progress-bar { transition: background-color .2s ease; }
+.progress.done .progress-bar { opacity: 0; }
+.progress-done {
+  position: absolute;
+  inset: -7px 0 0;
+  display: grid;
+  place-items: center;
+  color: var(--ok);
+  font-size: 15px;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(.6);
+  transition: opacity .18s ease-out, transform .18s ease-out;
+}
+.progress.done .progress-done { opacity: 1; transform: scale(1); }
 .progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .2s; }
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
 .keyrow { display: flex; gap: 8px; }
@@ -1165,6 +1240,7 @@ const UPLOAD_JS: &str = r#"
 
   async function upload(files) {
     if (!files.length) return;
+    setBusy(true);
     const key = keyInput.value.trim();
     if (!key) { status.textContent = UP_MSG.needKey; keyInput.focus(); return; }
     retryFiles = [];
@@ -1212,14 +1288,24 @@ const UPLOAD_JS: &str = r#"
         }
       }
     }
-    progress.hidden = true;
-    bar.style.width = '0%';
     if (failed) {
+      progress.hidden = true;
+      bar.style.width = '0%';
       status.textContent = failed + ' / ' + files.length + ' · ' + lastError;
       retryBtn.hidden = false;
+      progress.classList.remove('done');
     } else {
+      bar.style.width = '100%';
+      progress.classList.add('done');
       status.textContent = UP_MSG.done;
-      setTimeout(() => location.reload(), 600);
+      setTimeout(() => {
+        progress.classList.remove('done');
+        progress.hidden = true;
+        bar.style.width = '0%';
+      }, 1500);
+      // In-place refresh: the new file appears without a page flash, and the
+      // tick above stays on screen long enough to be seen.
+      setTimeout(() => { void refreshListing(); }, 800);
     }
   }
 
