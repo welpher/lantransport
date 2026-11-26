@@ -90,6 +90,26 @@ folder; nothing is copied or indexed.
 
 Security model, limits and known caveats live in [SECURITY.md](SECURITY.md).
 
+### Why does the browser say "Not secure"?
+
+Because the page is plain HTTP on a local address. Nothing leaves your network,
+but a browser has no way to know that: it marks every non-HTTPS page, and a LAN
+IP cannot get a certificate that phones would trust (a self-signed one replaces
+the small grey label with a full-page "your connection is not private" warning,
+which is worse for guests).
+
+What that means in practice:
+
+- **Home or office Wi-Fi** — the traffic stays on your network; the label is
+  cosmetic. Visitors only need the link.
+- **Public Wi-Fi** (cafés, hotels, conferences) — someone on the same network can
+  read the browsing password and upload key, both of which travel in plain text.
+  Use a password, rotate the upload key afterwards, or share over a network you
+  trust instead.
+
+HTTPS with a verifiable certificate needs a domain name pointing at the LAN
+address, which is why it is not offered here.
+
 ## Development
 
 Prerequisites: Node 20+, pnpm, Rust stable, and the
