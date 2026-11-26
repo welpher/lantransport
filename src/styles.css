@@ -101,7 +101,22 @@ h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
 }
 .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: 0.6; }
 .pill.on { color: var(--text); }
-.pill.on .dot { background: var(--ok); opacity: 1; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16); }
+.pill.on .dot {
+  background: var(--ok);
+  opacity: 1;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes pop { 0% { transform: scale(1); } 45% { transform: scale(1.06); } 100% { transform: scale(1); } }
+.btn.pop, .primary.pop { animation: pop .35s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
 select {
   appearance: none;
   border: 1px solid var(--line);

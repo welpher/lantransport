@@ -661,8 +661,12 @@ async function flashCopy(value: string, button: HTMLButtonElement): Promise<void
     await writeText(value);
     const original = button.textContent;
     button.textContent = text().copied;
+    button.classList.remove("pop");
+    void button.offsetWidth; // restart the animation if it is already running
+    button.classList.add("pop");
     window.setTimeout(() => {
       button.textContent = original;
+      button.classList.remove("pop");
     }, 1200);
   } catch {
     localError = "io";
