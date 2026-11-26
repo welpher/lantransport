@@ -103,5 +103,6 @@
   "ui.clear": "Clear",
   "upload.set_key": "Set upload key",
   "upload.clear": "Clear upload key",
-  "page.sort": "Sort"
+  "page.sort": "Sort",
+  "upload.retry": "Retry failed"
 }

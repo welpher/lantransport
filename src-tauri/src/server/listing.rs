@@ -231,6 +231,7 @@ pub fn render(
       </div>
       <div class="up-status hint" id="up-status"></div>
       <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
+      <button class="btn ghost" id="up-retry" type="button" hidden>{retry}</button>
     </div>
   </div>
 </div>
@@ -241,6 +242,7 @@ pub fn render(
             drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
             key = escape_html(&t("upload.key")),
+            retry = escape_html(&t("upload.retry")),
             clear = escape_html(&t("upload.clear")),
             dropping = escape_html(&t("upload.dropping")),
         )
@@ -735,6 +737,8 @@ const UPLOAD_JS: &str = r#"
   const input = document.getElementById('up-files');
   const keyInput = document.getElementById('up-key');
   const status = document.getElementById('up-status');
+  const retryBtn = document.getElementById('up-retry');
+  let retryFiles = [];
   const progress = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar');
   const storeKey = 'lantransport-upload-key';
@@ -819,19 +823,31 @@ const UPLOAD_JS: &str = r#"
     if (files.length) upload(files);
   });
 
-  function send(file, key) {
+  function humanSpeed(bytesPerSecond) {
+    if (!isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '—';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    let value = bytesPerSecond;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+    return (unit === 0 ? Math.round(value) : value.toFixed(1)) + ' ' + units[unit];
+  }
+
+  function formatEta(seconds) {
+    if (!isFinite(seconds) || seconds <= 0) return '—';
+    if (seconds < 1) return '<1s';
+    if (seconds < 60) return Math.round(seconds) + 's';
+    const minutes = Math.floor(seconds / 60);
+    return minutes + 'm ' + Math.round(seconds % 60) + 's';
+  }
+
+  function send(file, key, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const url = '/upload?name=' + encodeURIComponent(file.name);
       xhr.open('PUT', url);
       xhr.setRequestHeader('X-Upload-Key', key);
       xhr.upload.onprogress = event => {
-        if (event.lengthComputable) {
-          const percent = Math.round(event.loaded / event.total * 100);
-          status.textContent = file.name + ' · ' + percent + '%';
-          progress.hidden = false;
-          bar.style.width = percent + '%';
-        }
+        if (event.lengthComputable) onProgress(event.loaded);
       };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
@@ -848,23 +864,49 @@ const UPLOAD_JS: &str = r#"
     if (!files.length) return;
     const key = keyInput.value.trim();
     if (!key) { status.textContent = UP_MSG.needKey; keyInput.focus(); return; }
+    retryFiles = [];
+    retryBtn.hidden = true;
+    const total = files.reduce((sum, file) => sum + file.size, 0);
+    let sent = 0;
     let failed = 0;
     let lastError = '';
+    const startedAt = performance.now();
+    const report = (index, loaded) => {
+      const current = sent + loaded;
+      const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 100;
+      const elapsed = Math.max(0.2, (performance.now() - startedAt) / 1000);
+      const speed = current / elapsed;
+      const eta = speed > 0 && total > current ? (total - current) / speed : 0;
+      status.textContent = (index + 1) + '/' + files.length + ' · ' + percent + '% · ' + humanSpeed(speed) + ' · ' + formatEta(eta);
+      progress.hidden = false;
+      bar.style.width = percent + '%';
+    };
     for (let index = 0; index < files.length; index++) {
-      status.textContent = UP_MSG.uploading + ' ' + (index + 1) + '/' + files.length;
+      report(index, 0);
       try {
-        await send(files[index], key);
+        await send(files[index], key, loaded => report(index, loaded));
+        sent += files[index].size;
       } catch (error) {
         failed++;
         lastError = error.message || UP_MSG.failed;
+        retryFiles.push(files[index]);
         status.textContent = files[index].name + ' · ' + lastError;
       }
     }
-    status.textContent = failed ? lastError : UP_MSG.done;
     progress.hidden = true;
     bar.style.width = '0%';
-    if (!failed) setTimeout(() => location.reload(), 600);
+    if (failed) {
+      status.textContent = failed + ' / ' + files.length + ' · ' + lastError;
+      retryBtn.hidden = false;
+    } else {
+      status.textContent = UP_MSG.done;
+      setTimeout(() => location.reload(), 600);
+    }
   }
+
+  retryBtn.addEventListener('click', () => {
+    if (retryFiles.length) void upload(retryFiles);
+  });
 })();
 "#;
 
