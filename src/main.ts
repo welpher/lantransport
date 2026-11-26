@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 
 import { LANGUAGES, detectLocale, normalizeLocale, translate } from "./i18n";
@@ -299,7 +299,8 @@ function renderRecent(): void {
     reveal.textContent = "↗";
     reveal.title = label.reveal;
     reveal.setAttribute("aria-label", label.reveal);
-    reveal.addEventListener("click", () => void revealItemInDir(item.dir));
+    // openPath opens the folder itself; reveal would select it one level up.
+    reveal.addEventListener("click", () => void openPath(item.dir));
 
     row.append(name, meta, reveal);
     return row;
@@ -331,7 +332,7 @@ function renderFolders(): void {
     open.textContent = "↗";
     open.title = label.reveal;
     open.setAttribute("aria-label", label.reveal);
-    open.addEventListener("click", () => void revealItemInDir(path));
+    open.addEventListener("click", () => void openPath(path));
     const remove = document.createElement("button");
     remove.className = "icon-btn";
     remove.textContent = "×";
