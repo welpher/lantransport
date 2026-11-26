@@ -112,7 +112,7 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     }
 }
 
-fn append_log(app: &AppHandle, message: &str) {
+pub(crate) fn append_log(app: &AppHandle, message: &str) {
     if let Ok(dir) = app.path().app_log_dir() {
         let _ = std::fs::create_dir_all(&dir);
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -191,6 +191,26 @@ fn start_server(
     let upload_app = app.clone();
     let on_upload: crate::server::UploadHook = Arc::new(move |notice| {
         let state = upload_app.state::<AppState>();
+        {
+            let mut recent = state
+                .recent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            recent.push_front(crate::state::RecentUpload {
+                name: notice.name.clone(),
+                bytes: notice.bytes,
+                peer: notice.peer.to_string(),
+                dir: notice.dir.to_string_lossy().into_owned(),
+                at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|value| value.as_secs())
+                    .unwrap_or(0),
+            });
+            while recent.len() > crate::state::RECENT_LIMIT {
+                recent.pop_back();
+            }
+        }
+        notify(&upload_app);
         let locale = state.ui_locale();
         let body = i18n::t_args(
             &locale,
@@ -229,6 +249,13 @@ fn start_server(
     )
     .map_err(|error| error_code(&error))?;
 
+    append_log(
+        app,
+        &format!(
+            "server started port={port} lan={allow_lan} folders={}",
+            paths.len()
+        ),
+    );
     *state
         .server
         .lock()
@@ -243,6 +270,7 @@ fn start_server(
 
 fn stop_server(app: &AppHandle) -> Snapshot {
     let state = app.state::<AppState>();
+    append_log(app, "server stopped");
     {
         let mut current = state
             .server

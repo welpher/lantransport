@@ -20,6 +20,14 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(AppState::new(&handle));
+            commands::append_log(
+                &handle,
+                &format!(
+                    "app started version={} platform={}",
+                    env!("CARGO_PKG_VERSION"),
+                    std::env::consts::OS
+                ),
+            );
             tray::setup(&handle)?;
             let auto_start = {
                 let state = handle.state::<AppState>();

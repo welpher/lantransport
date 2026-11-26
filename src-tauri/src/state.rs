@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -7,8 +8,21 @@ use crate::server::ServerHandle;
 use crate::server::i18n;
 use crate::settings::Settings;
 
+/// One finished upload, kept in memory for the Activity tab.
+#[derive(Serialize, Clone)]
+pub struct RecentUpload {
+    pub name: String,
+    pub bytes: u64,
+    pub peer: String,
+    pub dir: String,
+    pub at: u64,
+}
+
+pub const RECENT_LIMIT: usize = 50;
+
 pub struct AppState {
     pub settings: Mutex<Settings>,
+    pub recent: Mutex<VecDeque<RecentUpload>>,
     pub server: Mutex<Option<ServerHandle>>,
     pub last_error: Mutex<Option<String>>,
     pub shutting_down: Mutex<bool>,
@@ -18,6 +32,7 @@ impl AppState {
     pub fn new(app: &AppHandle) -> Self {
         Self {
             settings: Mutex::new(Settings::load(app)),
+            recent: Mutex::new(VecDeque::new()),
             server: Mutex::new(None),
             last_error: Mutex::new(None),
             shutting_down: Mutex::new(false),
@@ -53,6 +68,7 @@ pub struct Snapshot {
     pub urls: Vec<String>,
     pub started_at_ms: Option<u64>,
     pub last_error: Option<String>,
+    pub recent: Vec<RecentUpload>,
 }
 
 pub fn snapshot(app: &AppHandle) -> Snapshot {
@@ -96,5 +112,12 @@ pub fn snapshot(app: &AppHandle) -> Snapshot {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clone(),
+        recent: state
+            .recent
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .cloned()
+            .collect(),
     }
 }

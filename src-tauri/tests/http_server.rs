@@ -904,3 +904,22 @@ fn zips_only_the_selected_files() {
         "only plain file names from this folder are accepted"
     );
 }
+
+#[test]
+fn searches_inside_subfolders() {
+    let root = temp_root("find");
+    let server = start(&root, None);
+
+    let page = get(server.port, "/?find=nested&lang=en");
+    assert_eq!(page.status, 200);
+    let html = page.text();
+    assert!(html.contains("Search results"), "results page renders");
+    assert!(html.contains("sub/nested.bin"), "nested files are found");
+    assert!(
+        !html.contains("hello.txt"),
+        "non-matching names are not listed"
+    );
+
+    let none = get(server.port, "/?find=zzzz&lang=en");
+    assert!(none.text().contains("Nothing matched"));
+}

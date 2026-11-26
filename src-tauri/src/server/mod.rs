@@ -36,6 +36,7 @@ pub struct UploadNotice {
     pub name: String,
     pub bytes: u64,
     pub peer: std::net::IpAddr,
+    pub dir: PathBuf,
 }
 
 pub type UploadHook = Arc<dyn Fn(UploadNotice) + Send + Sync>;

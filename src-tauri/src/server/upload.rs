@@ -269,6 +269,7 @@ pub fn handle<R: BufRead>(
             name: saved.clone(),
             bytes: written,
             peer,
+            dir: directory.clone(),
         });
     }
     let body = format!(
