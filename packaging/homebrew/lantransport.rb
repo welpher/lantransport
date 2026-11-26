@@ -1,6 +1,6 @@
 cask "lantransport" do
-  version "0.2.0"
-  sha256 "23fb853bd7f74694ec49ca0b55d8b1c7644308a70d64e6572ba6c70783ce40f3"
+  version "0.3.0"
+  sha256 "82d84ca44833081588fc83e8f15a49a011bccaa36008407f7544fba23c8002d2"
 
   url "https://github.com/welpher/lantransport/releases/download/v#{version}/LanTransport_#{version}_universal.dmg"
   name "LanTransport"

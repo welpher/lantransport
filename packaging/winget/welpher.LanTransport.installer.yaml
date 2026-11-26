@@ -1,5 +1,5 @@
 PackageIdentifier: welpher.LanTransport
-PackageVersion: 0.2.0
+PackageVersion: 0.3.0
 InstallerType: nullsoft
 Scope: user
 InstallModes:
@@ -9,7 +9,7 @@ InstallModes:
 UpgradeBehavior: install
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/welpher/lantransport/releases/download/v0.2.0/LanTransport_0.2.0_x64-setup.exe
-    InstallerSha256: 395AA84B390404920C35BEF0CAF539F96128E5749369E17CD191AD47B05A0941
+    InstallerUrl: https://github.com/welpher/lantransport/releases/download/v0.3.0/LanTransport_0.3.0_x64-setup.exe
+    InstallerSha256: FC35A6B59B33C02EE66A5FCC385B52B6BFD5C99F082F7632E2EA8E72FA691E47
 ManifestType: installer
 ManifestVersion: 1.6.0
