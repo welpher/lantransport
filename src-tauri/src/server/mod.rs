@@ -158,15 +158,23 @@ impl ServerHandle {
             .name("lantransport-net".into())
             .spawn(move || {
                 loop {
-                    if urls_rx.recv_timeout(Duration::from_secs(5)).is_ok() {
+                    if urls_rx.recv_timeout(Duration::from_secs(15)).is_ok() {
                         break;
                     }
                     let next = lan::urls(port, allow_lan);
-                    let mut current = monitor_urls
-                        .write()
-                        .unwrap_or_else(|error| error.into_inner());
-                    if *current != next {
-                        *current = next;
+                    let changed = {
+                        let mut current = monitor_urls
+                            .write()
+                            .unwrap_or_else(|error| error.into_inner());
+                        if *current == next {
+                            false
+                        } else {
+                            *current = next;
+                            true
+                        }
+                    };
+                    if changed && let Some(notify) = &on_urls_changed {
+                        notify();
                     }
                 }
             })
