@@ -123,5 +123,14 @@
   "page.select": "选择",
   "page.select_all": "全选",
   "page.selected": "已选 {n} 项 · {size}",
-  "page.cancel": "取消"
+  "page.cancel": "取消",
+  "upload.retrying": "连接中断，正在重试 {n}/{total}…",
+  "ui.tab_activity": "活动",
+  "ui.recent_title": "最近上传",
+  "ui.recent_hint": "最近 50 个收到的文件",
+  "ui.recent_empty": "还没有收到任何文件",
+  "page.find_title": "搜索结果",
+  "page.find_empty": "这个文件夹及其子文件夹里都没有匹配的文件。",
+  "page.find_count": "{n} 个匹配",
+  "page.find_back": "返回文件夹"
 }

@@ -20,6 +20,14 @@ interface Settings {
   theme: string;
 }
 
+interface RecentUpload {
+  name: string;
+  bytes: number;
+  peer: string;
+  dir: string;
+  at: number;
+}
+
 interface Snapshot {
   version: string;
   platform: string;
@@ -29,6 +37,7 @@ interface Snapshot {
   urls: string[];
   started_at_ms: number | null;
   last_error: string | null;
+  recent: RecentUpload[];
 }
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -44,8 +53,13 @@ const elements = {
   locale: $<HTMLSelectElement>("locale"),
   tabShare: $<HTMLButtonElement>("tab-share"),
   tabSettings: $<HTMLButtonElement>("tab-settings"),
+  tabActivity: $<HTMLButtonElement>("tab-activity"),
   sharePanel: $("share-panel"),
   settingsPanel: $("settings-panel"),
+  activityPanel: $("activity-panel"),
+  activityLabel: $("activity-label"),
+  activityHint: $("activity-hint"),
+  recent: $("recent"),
   connectionLabel: $("connection-label"),
   uploadsGroupLabel: $("uploads-label"),
   behaviorLabel: $("behavior-label"),
@@ -103,7 +117,7 @@ const elements = {
 
 let snapshot: Snapshot | null = null;
 let locale = "en";
-let tab: "share" | "settings" = "share";
+let tab: "share" | "settings" | "activity" = "share";
 let busy = false;
 let localError: string | null = null;
 let qrFor: string | null = null;
@@ -212,6 +226,10 @@ function text() {
     dropKnown: t("ui.drop_known"),
     tabShare: t("ui.tab_share"),
     tabSettings: t("ui.tab_settings"),
+    tabActivity: t("ui.tab_activity"),
+    activityTitle: t("ui.recent_title"),
+    activityHint: t("ui.recent_hint"),
+    recentEmpty: t("ui.recent_empty"),
     groupConnection: t("ui.group_connection"),
     groupUploads: t("ui.group_uploads"),
     groupBehavior: t("ui.group_behavior"),
@@ -243,6 +261,56 @@ function syncInputs(): void {
 function folderName(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+function humanSize(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function renderRecent(): void {
+  const label = text();
+  const recent = snapshot?.recent ?? [];
+  const rows = recent.map((item) => {
+    const row = document.createElement("div");
+    row.className = "recent-item";
+
+    const name = document.createElement("span");
+    name.className = "recent-name";
+    name.textContent = item.name;
+    name.title = item.name;
+
+    const meta = document.createElement("span");
+    meta.className = "recent-meta";
+    const time = new Date(item.at * 1000).toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    meta.textContent = `${humanSize(item.bytes)} · ${item.peer} · ${time}`;
+
+    const reveal = document.createElement("button");
+    reveal.className = "icon-btn";
+    reveal.textContent = "↗";
+    reveal.title = label.reveal;
+    reveal.setAttribute("aria-label", label.reveal);
+    reveal.addEventListener("click", () => void revealItemInDir(item.dir));
+
+    row.append(name, meta, reveal);
+    return row;
+  });
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "folders-empty";
+    empty.textContent = label.recentEmpty;
+    rows.push(empty);
+  }
+  elements.recent.replaceChildren(...rows);
 }
 
 function renderFolders(): void {
@@ -294,12 +362,19 @@ function apply(): void {
   elements.tagline.textContent = label.tagline;
   elements.tabShare.textContent = label.tabShare;
   elements.tabSettings.textContent = label.tabSettings;
+  elements.tabActivity.textContent = label.tabActivity;
+  elements.activityLabel.textContent = label.activityTitle;
+  elements.activityHint.textContent = label.activityHint;
+  renderRecent();
   elements.tabShare.classList.toggle("active", tab === "share");
   elements.tabSettings.classList.toggle("active", tab === "settings");
+  elements.tabActivity.classList.toggle("active", tab === "activity");
   elements.tabShare.setAttribute("aria-selected", String(tab === "share"));
   elements.tabSettings.setAttribute("aria-selected", String(tab === "settings"));
+  elements.tabActivity.setAttribute("aria-selected", String(tab === "activity"));
   elements.sharePanel.hidden = tab !== "share";
   elements.settingsPanel.hidden = tab !== "settings";
+  elements.activityPanel.hidden = tab !== "activity";
   elements.connectionLabel.textContent = label.groupConnection;
   elements.uploadsGroupLabel.textContent = label.groupUploads;
   elements.behaviorLabel.textContent = label.groupBehavior;
@@ -713,6 +788,10 @@ elements.tabShare.addEventListener("click", () => {
 });
 elements.tabSettings.addEventListener("click", () => {
   tab = "settings";
+  apply();
+});
+elements.tabActivity.addEventListener("click", () => {
+  tab = "activity";
   apply();
 });
 elements.run.addEventListener("click", () => {

@@ -260,11 +260,12 @@ pub fn render(
     );
 
     let upload_strings = format!(
-        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {} }};",
+        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {} }};\nconst UP_RETRIES = 3;",
         js_string(&t("upload.need_key")),
         js_string(&t("upload.failed")),
         js_string(&t("upload.done")),
         js_string(&t("upload.uploading")),
+        js_string(&t("upload.retrying")),
     );
 
     let lang_options: String = i18n::LANGUAGES
@@ -480,6 +481,13 @@ function bindRows() {
 q.addEventListener('input', applyFilter);
 q.addEventListener('keydown', event => {
   if (event.key === 'Escape') { q.value = ''; applyFilter(); }
+  if (event.key === 'Enter') {
+    const term = q.value.trim();
+    if (!term) return;
+    let dirParam = location.pathname;
+    try { dirParam = decodeURIComponent(location.pathname); } catch (e) {}
+    location.href = dirParam + '?find=' + encodeURIComponent(term);
+  }
 });
 document.querySelectorAll('th .sort').forEach(button => {
   button.addEventListener('click', () => {
@@ -1176,16 +1184,32 @@ const UPLOAD_JS: &str = r#"
       progress.hidden = false;
       bar.style.width = percent + '%';
     };
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     for (let index = 0; index < files.length; index++) {
       report(index, 0);
-      try {
-        await send(files[index], key, loaded => report(index, loaded));
-        sent += files[index].size;
-      } catch (error) {
-        failed++;
-        lastError = error.message || UP_MSG.failed;
-        retryFiles.push(files[index]);
-        status.textContent = files[index].name + ' · ' + lastError;
+      let attempt = 0;
+      while (true) {
+        try {
+          await send(files[index], key, loaded => report(index, loaded));
+          sent += files[index].size;
+          break;
+        } catch (error) {
+          // The next attempt asks the server how much arrived and continues
+          // from there, so a flaky Wi-Fi blip usually repairs itself.
+          attempt++;
+          if (attempt <= UP_RETRIES) {
+            status.textContent = UP_MSG.retrying
+              .replace('{n}', String(attempt))
+              .replace('{total}', String(UP_RETRIES));
+            await sleep(attempt === 1 ? 1000 : 3000);
+            continue;
+          }
+          failed++;
+          lastError = error.message || UP_MSG.failed;
+          retryFiles.push(files[index]);
+          status.textContent = files[index].name + ' · ' + lastError;
+          break;
+        }
       }
     }
     progress.hidden = true;
@@ -1204,6 +1228,172 @@ const UPLOAD_JS: &str = r#"
   });
 })();
 "#;
+
+/// One match from a recursive search, with the path relative to the folder the
+/// visitor is standing in.
+pub struct Found {
+    pub path: String,
+    pub size: u64,
+    pub modified: Option<String>,
+    pub href: String,
+}
+
+const FIND_DEPTH: usize = 8;
+const FIND_VISITED: usize = 20_000;
+const FIND_MATCHES: usize = 500;
+
+pub fn collect_matches(roots: &[std::path::PathBuf], term: &str) -> Vec<Found> {
+    let needle = term.to_lowercase();
+    let mut found = Vec::new();
+    let mut visited = 0usize;
+    for (index, root) in roots.iter().enumerate() {
+        walk_find(root, "", 0, &needle, index, &mut found, &mut visited);
+        if found.len() >= FIND_MATCHES {
+            break;
+        }
+    }
+    found.sort_by_key(|item| item.path.to_lowercase());
+    found
+}
+
+fn walk_find(
+    dir: &std::path::Path,
+    prefix: &str,
+    depth: usize,
+    needle: &str,
+    mount: usize,
+    found: &mut Vec<Found>,
+    visited: &mut usize,
+) {
+    if depth > FIND_DEPTH || *visited > FIND_VISITED || found.len() >= FIND_MATCHES {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut children: Vec<_> = entries.flatten().collect();
+    children.sort_by_key(|entry| entry.file_name());
+    for child in children {
+        *visited += 1;
+        if *visited > FIND_VISITED || found.len() >= FIND_MATCHES {
+            return;
+        }
+        let name = child.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(child.path()) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        let relative = format!("{prefix}{name}");
+        if meta.is_dir() {
+            walk_find(
+                &child.path(),
+                &format!("{relative}/"),
+                depth + 1,
+                needle,
+                mount,
+                found,
+                visited,
+            );
+            continue;
+        }
+        if !meta.is_file() || !name.to_lowercase().contains(needle) {
+            continue;
+        }
+        let href = format!(
+            "{}?src={mount}&download=1",
+            relative
+                .split('/')
+                .map(encode_segment)
+                .collect::<Vec<_>>()
+                .join("/")
+        );
+        found.push(Found {
+            path: relative,
+            size: meta.len(),
+            modified: meta
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|value| {
+                    chrono::DateTime::from_timestamp(value.as_secs() as i64, 0)
+                        .map(|time| {
+                            time.with_timezone(&Local)
+                                .format("%Y-%m-%d %H:%M")
+                                .to_string()
+                        })
+                        .unwrap_or_else(|| "—".into())
+                }),
+            href,
+        });
+    }
+}
+
+pub fn render_find(term: &str, found: &[Found], locale: &str, nonce: &str) -> String {
+    let t = |key: &str| i18n::t(locale, key);
+    let t1 = |key: &str, value: &str| i18n::t_args(locale, key, &[("n", value.to_string())]);
+    let rows: String = found
+        .iter()
+        .map(|item| {
+            format!(
+                "<tr><td class='name'><a href='{}'>{}</a></td><td class='size'>{}</td><td class='time'>{}</td><td class='act'><a class='btn' href='{}'>{}</a></td></tr>",
+                escape_html(&item.href),
+                escape_html(&item.path),
+                human_size(item.size),
+                escape_html(item.modified.as_deref().unwrap_or("—")),
+                escape_html(&item.href),
+                escape_html(&t("page.download"))
+            )
+        })
+        .collect();
+    let body = if found.is_empty() {
+        format!(
+            "<tr><td colspan='4' class='empty'>{}</td></tr>",
+            t("page.find_empty")
+        )
+    } else {
+        rows
+    };
+    format!(
+        r#"<!doctype html>
+<html lang="{lang}">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="/icon.png" type="image/png">
+<title>{title} · LanTransport</title>
+<style>{STYLE}</style>
+<div class="wrap">
+  <div class="top"><div class="top-inner">
+    <a class="brand" href="./"><img class="brand-mark" src="/icon.png" alt="" width="40" height="40" draggable="false">LanTransport</a>
+    <div class="top-actions"><a class="btn" href="./">{back}</a></div>
+  </div></div>
+  <h1>{heading}</h1>
+  <div class="meta">{count}</div>
+  <div class="card list-card"><table>
+    <thead><tr><th>{name}</th><th>{size}</th><th class="time-head">{modified}</th><th></th></tr></thead>
+    <tbody>{body}</tbody>
+  </table></div>
+</div>
+<script nonce="{nonce}"></script>
+"#,
+        lang = escape_html(locale),
+        title = escape_html(&t("page.find_title")),
+        STYLE = STYLE,
+        back = escape_html(&t("page.find_back")),
+        heading = escape_html(&format!("{}: {}", t("page.find_title"), term)),
+        count = escape_html(&t1("page.find_count", &found.len().to_string())),
+        name = escape_html(&t("page.col.name")),
+        size = escape_html(&t("page.col.size")),
+        modified = escape_html(&t("page.col.modified")),
+        body = body,
+        nonce = escape_html(nonce),
+    )
+}
 
 #[cfg(test)]
 mod tests {

@@ -29,6 +29,7 @@
           <nav class="tabs" role="tablist">
             <button id="tab-share" class="tab" role="tab"></button>
             <button id="tab-settings" class="tab" role="tab"></button>
+            <button id="tab-activity" class="tab" role="tab"></button>
           </nav>
           <button id="run" class="primary run-btn"></button>
         </div>
@@ -122,6 +123,16 @@
 
         </div>
       </main>
+
+      <div id="activity-panel" class="stack panel" hidden>
+        <section class="card">
+          <div class="section-head">
+            <h2 class="group-title" id="activity-label"></h2>
+            <span class="hint" id="activity-hint"></span>
+          </div>
+          <div id="recent" class="recent"></div>
+        </section>
+      </div>
 
       <footer class="footer">
         <span id="security"></span>

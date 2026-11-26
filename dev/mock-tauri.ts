@@ -25,6 +25,11 @@ const snapshot = {
   urls: running ? ["http://127.0.0.1:8787", "http://192.168.1.24:8787"] : [],
   started_at_ms: null,
   last_error: null,
+  recent: [
+    { name: "holiday.mp4", bytes: 1288490188, peer: "192.168.1.7", dir: "/Users/me/Downloads", at: 1795690000 },
+    { name: "contract.pdf", bytes: 860160, peer: "192.168.1.9", dir: "/Volumes/Photos", at: 1795686000 },
+    { name: "Screenshot 2026-11-26 at 19.02.11.png", bytes: 483328, peer: "192.168.1.12", dir: "/Users/me/Downloads", at: 1795681000 },
+  ],
 };
 
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
