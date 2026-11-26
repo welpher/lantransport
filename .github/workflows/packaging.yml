@@ -20,47 +20,56 @@ jobs:
       TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      # On release events the default ref is the tag, which leaves a detached
-      # HEAD and makes `git push` fail; manifests are rewritten from the release
-      # assets, so always work on the default branch instead.
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - name: Rewrite manifests from the release assets
-        run: node scripts/update-packaging.mjs "$TAG"
-      - name: Commit manifest updates
-        run: |
-          if [ -z "$(git status --porcelain packaging)" ]; then
-            echo "manifests already up to date"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaging
-          git commit -m "chore(packaging): sync manifests for $TAG"
-          git push
-      - name: Mint a token for the tap repository
-        id: tap
+      # Two things need the App token: main is protected (a plain GITHUB_TOKEN
+      # push is rejected) and the tap is a different repository.
+      - name: Mint a GitHub App token
+        id: app
         if: vars.TAP_CLIENT_ID != ''
         uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ vars.TAP_CLIENT_ID }}
           private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
           owner: welpher
-          repositories: homebrew-tap
-      - name: Update the Homebrew tap
-        if: steps.tap.outputs.token != ''
+          repositories: lantransport,homebrew-tap
+      # On release events the default ref is the tag, which leaves a detached
+      # HEAD and makes `git push` fail; manifests are rewritten from the release
+      # assets, so always work on the default branch instead.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Rewrite manifests from the release assets
+        run: node scripts/update-packaging.mjs "$TAG"
+      - name: Commit manifest updates
         env:
-          TAP_TOKEN: ${{ steps.tap.outputs.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          if [ -z "$(git status --porcelain packaging)" ]; then
+            echo "manifests already up to date"
+            exit 0
+          fi
+          git config user.name "lantransport-tap-bot[bot]"
+          git config user.email "5931256+lantransport-tap-bot[bot]@users.noreply.github.com"
+          git add packaging
+          git commit -m "chore(packaging): sync manifests for $TAG"
+          if [ -n "$APP_TOKEN" ]; then
+            git push
+          else
+            echo "::warning::no App token; skipping the push (main requires one to bypass the ruleset)"
+          fi
+      - name: Update the Homebrew tap
+        if: steps.app.outputs.token != ''
+        env:
+          TAP_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/welpher/homebrew-tap.git" /tmp/tap
           cp packaging/homebrew/lantransport.rb /tmp/tap/Casks/lantransport.rb
           cd /tmp/tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "lantransport-tap-bot[bot]"
+          git config user.email "5931256+lantransport-tap-bot[bot]@users.noreply.github.com"
           git add Casks/lantransport.rb
           git diff --cached --quiet && { echo "tap already up to date"; exit 0; }
           git commit -m "lantransport ${TAG#v}"
