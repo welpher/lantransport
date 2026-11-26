@@ -191,6 +191,26 @@ fn start_server(
     let upload_app = app.clone();
     let on_upload: crate::server::UploadHook = Arc::new(move |notice| {
         let state = upload_app.state::<AppState>();
+        {
+            let mut recent = state
+                .recent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            recent.push_front(crate::state::RecentUpload {
+                name: notice.name.clone(),
+                bytes: notice.bytes,
+                peer: notice.peer.to_string(),
+                dir: notice.dir.to_string_lossy().into_owned(),
+                at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|value| value.as_secs())
+                    .unwrap_or(0),
+            });
+            while recent.len() > crate::state::RECENT_LIMIT {
+                recent.pop_back();
+            }
+        }
+        notify(&upload_app);
         let locale = state.ui_locale();
         let body = i18n::t_args(
             &locale,

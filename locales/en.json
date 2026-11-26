@@ -124,5 +124,14 @@
   "page.select_all": "Select all",
   "page.selected": "{n} selected · {size}",
   "page.cancel": "Cancel",
+  "upload.retrying": "Connection lost, retrying {n}/{total}…",
+  "ui.tab_activity": "Activity",
+  "ui.recent_title": "Recent uploads",
+  "ui.recent_hint": "Last 50 files received",
+  "ui.recent_empty": "Nothing has been uploaded yet",
+  "page.find_title": "Search results",
+  "page.find_empty": "Nothing matched in this folder or below it.",
+  "page.find_count": "{n} matches",
+  "page.find_back": "Back to the folder",
   "tray.logs": "Open logs folder"
 }

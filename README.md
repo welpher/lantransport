@@ -44,9 +44,9 @@ No account, no cloud, no relay: the files never leave your network.
 
 ## Screenshots
 
-| Sharing | Settings |
-|---|---|
-| ![Sharing](docs/screenshots/app-running.png) | ![Settings](docs/screenshots/app-settings.png) |
+| Sharing | Settings | Activity |
+|---|---|---|
+| ![Sharing](docs/screenshots/app-running.png) | ![Settings](docs/screenshots/app-settings.png) | ![Activity](docs/screenshots/app-activity.png) |
 
 | Phone | Desktop |
 |---|---|

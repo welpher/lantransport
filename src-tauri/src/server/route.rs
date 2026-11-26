@@ -114,6 +114,12 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         if super::http::query_param(&request.target, "zip").is_some() {
             return serve_zip(&dirs, &decoded, locale, &request.target);
         }
+        if let Some(term) = super::http::query_param(&request.target, "find") {
+            let term = term.trim();
+            if !term.is_empty() {
+                return serve_find(&dirs, term, locale);
+            }
+        }
         let uploads = ctx
             .upload
             .read()
@@ -143,6 +149,16 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         request,
         locale,
     )
+}
+
+/// `GET /<dir>/?find=term` searches this folder and everything below it.
+fn serve_find(dirs: &[(usize, PathBuf)], term: &str, locale: &str) -> Response {
+    let roots: Vec<PathBuf> = dirs.iter().map(|(_, dir)| dir.clone()).collect();
+    let found = listing::collect_matches(&roots, term);
+    let nonce = nonce();
+    Response::html(200, listing::render_find(term, &found, locale, &nonce))
+        .header("Cache-Control", "no-store")
+        .header("Content-Security-Policy", format!("default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"))
 }
 
 /// `GET /<dir>/?zip=1` streams everything under that directory as one archive.
