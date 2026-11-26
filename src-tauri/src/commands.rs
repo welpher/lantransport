@@ -112,7 +112,7 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     }
 }
 
-fn append_log(app: &AppHandle, message: &str) {
+pub(crate) fn append_log(app: &AppHandle, message: &str) {
     if let Ok(dir) = app.path().app_log_dir() {
         let _ = std::fs::create_dir_all(&dir);
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -229,6 +229,13 @@ fn start_server(
     )
     .map_err(|error| error_code(&error))?;
 
+    append_log(
+        app,
+        &format!(
+            "server started port={port} lan={allow_lan} folders={}",
+            paths.len()
+        ),
+    );
     *state
         .server
         .lock()
@@ -243,6 +250,7 @@ fn start_server(
 
 fn stop_server(app: &AppHandle) -> Snapshot {
     let state = app.state::<AppState>();
+    append_log(app, "server stopped");
     {
         let mut current = state
             .server

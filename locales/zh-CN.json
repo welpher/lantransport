@@ -123,5 +123,6 @@
   "page.select": "选择",
   "page.select_all": "全选",
   "page.selected": "已选 {n} 项 · {size}",
-  "page.cancel": "取消"
+  "page.cancel": "取消",
+  "tray.logs": "打开日志目录"
 }

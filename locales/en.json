@@ -123,5 +123,6 @@
   "page.select": "Select",
   "page.select_all": "Select all",
   "page.selected": "{n} selected · {size}",
-  "page.cancel": "Cancel"
+  "page.cancel": "Cancel",
+  "tray.logs": "Open logs folder"
 }
