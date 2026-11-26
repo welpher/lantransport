@@ -31,7 +31,7 @@ pub fn handle<R: BufRead>(
     request: &Request,
     ctx: &ServerContext,
     peer: IpAddr,
-) -> Response {
+) -> (Response, bool) {
     let locale = i18n::from_request(request);
     let config = ctx
         .upload
@@ -39,11 +39,14 @@ pub fn handle<R: BufRead>(
         .unwrap_or_else(|error| error.into_inner())
         .clone();
     if !config.enabled || config.key.is_empty() {
-        return fail(403, locale, "upload.err.disabled");
+        return (fail(403, locale, "upload.err.disabled"), false);
     }
 
     if let Some(seconds) = ctx.upload_limiter.blocked_for(peer) {
-        return fail(429, locale, "upload.err.too_many").header("Retry-After", seconds.to_string());
+        return (
+            fail(429, locale, "upload.err.too_many").header("Retry-After", seconds.to_string()),
+            false,
+        );
     }
 
     let supplied = request
@@ -55,7 +58,7 @@ pub fn handle<R: BufRead>(
     if !allowed {
         ctx.upload_limiter.note_failure(peer);
         super::log_event(ctx, &format!("upload denied peer={peer} reason=wrong_key"));
-        return fail(403, locale, "upload.err.wrong_key");
+        return (fail(403, locale, "upload.err.wrong_key"), false);
     }
     ctx.upload_limiter.note_success(peer);
 
@@ -67,15 +70,15 @@ pub fn handle<R: BufRead>(
         .map(|(_, value)| value.as_str())
         .and_then(safe_file_name)
     else {
-        return fail(400, locale, "upload.err.bad_name");
+        return (fail(400, locale, "upload.err.bad_name"), false);
     };
 
     let Some(first) = ctx.mounts.first() else {
-        return fail(404, locale, "upload.err.no_folder");
+        return (fail(404, locale, "upload.err.no_folder"), false);
     };
     let directory = first.dir.join("uploads");
     if fs::create_dir_all(&directory).is_err() {
-        return fail(500, locale, "upload.err.write");
+        return (fail(500, locale, "upload.err.write"), false);
     }
 
     let chunked = request
@@ -89,13 +92,13 @@ pub fn handle<R: BufRead>(
             .header("content-length")
             .and_then(|value| value.parse::<u64>().ok())
         else {
-            return fail(411, locale, "upload.err.length");
+            return (fail(411, locale, "upload.err.length"), false);
         };
         if length == 0 {
-            return fail(400, locale, "upload.err.empty");
+            return (fail(400, locale, "upload.err.empty"), false);
         }
         if length > config.max_bytes {
-            return fail(413, locale, "upload.err.too_large");
+            return (fail(413, locale, "upload.err.too_large"), false);
         }
         Some(length)
     };
@@ -114,7 +117,7 @@ pub fn handle<R: BufRead>(
     let temp = temp_path(&directory);
     let mut file = match File::create_new(&temp) {
         Ok(file) => file,
-        Err(_) => return fail(500, locale, "upload.err.write"),
+        Err(_) => return (fail(500, locale, "upload.err.write"), false),
     };
 
     let written = match declared {
@@ -129,7 +132,7 @@ pub fn handle<R: BufRead>(
                         "upload failed peer={peer} name=\"{name}\" wrote={written}/{length} error={error}"
                     ),
                 );
-                return fail(500, locale, "upload.err.interrupted");
+                return (fail(500, locale, "upload.err.interrupted"), false);
             }
         },
         None => match copy_chunked(reader, &mut file, config.max_bytes) {
@@ -137,7 +140,7 @@ pub fn handle<R: BufRead>(
             Err(BodyError::TooLarge) => {
                 drop(file);
                 let _ = fs::remove_file(&temp);
-                return fail(413, locale, "upload.err.too_large");
+                return (fail(413, locale, "upload.err.too_large"), false);
             }
             Err(BodyError::Io(error)) => {
                 drop(file);
@@ -146,7 +149,7 @@ pub fn handle<R: BufRead>(
                     ctx,
                     &format!("upload failed peer={peer} name=\"{name}\" chunked error={error}"),
                 );
-                return fail(500, locale, "upload.err.interrupted");
+                return (fail(500, locale, "upload.err.interrupted"), false);
             }
         },
     };
@@ -154,13 +157,13 @@ pub fn handle<R: BufRead>(
     if file.sync_all().is_err() {
         drop(file);
         let _ = fs::remove_file(&temp);
-        return fail(500, locale, "upload.err.write");
+        return (fail(500, locale, "upload.err.write"), false);
     }
     drop(file);
 
     let Some(target) = commit(&temp, &directory, &name) else {
         let _ = fs::remove_file(&temp);
-        return fail(500, locale, "upload.err.write");
+        return (fail(500, locale, "upload.err.write"), false);
     };
 
     let saved = target
@@ -175,8 +178,11 @@ pub fn handle<R: BufRead>(
         "{{\"name\":{},\"size\":{written}}}",
         serde_json_string(&saved)
     );
-    Response::bytes(201, "application/json; charset=utf-8", body.into_bytes())
-        .header("Cache-Control", "no-store")
+    (
+        Response::bytes(201, "application/json; charset=utf-8", body.into_bytes())
+            .header("Cache-Control", "no-store"),
+        true,
+    )
 }
 
 type BodyResult = Result<u64, (u64, std::io::Error)>;

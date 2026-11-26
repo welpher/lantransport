@@ -1,0 +1,37 @@
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    groups:
+      # Tauri crates are version-locked to each other and to the CLI; bumping
+      # one without the others either fails to build or silently mismatches.
+      tauri:
+        patterns:
+          - "tauri*"
+      rust-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "tauri*"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
+      npm-dependencies:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@tauri-apps/*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

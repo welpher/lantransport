@@ -585,3 +585,25 @@ fn password_change_applies_to_a_running_server() {
         200
     );
 }
+
+#[test]
+fn rejected_upload_still_delivers_its_error_response() {
+    let (root, server) = upload_server("reject-big-body");
+    // A client with a wrong key keeps streaming a large body. The server must
+    // still let the 403 through instead of resetting the connection.
+    let body = "x".repeat(512 * 1024);
+    let reply = put(server.port, "name=big.txt", Some("wrong-key"), &body);
+    assert_eq!(reply.status, 403);
+    assert!(
+        reply.text().contains("upload.err.wrong_key"),
+        "error body lost: {}",
+        reply.text()
+    );
+    assert!(!root.join("uploads/big.txt").exists());
+
+    // The same server must still work for a valid upload afterwards.
+    assert_eq!(
+        put(server.port, "name=ok.txt", Some("k3y"), "ok").status,
+        201
+    );
+}
