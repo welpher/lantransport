@@ -17,4 +17,7 @@ touching `locales/`.
 - Add a test only for logic where a silent regression is costly: path resolution,
   auth, uploads, Range handling. UI copy and wiring do not need tests.
 - Run `cargo fmt` and `cargo clippy -- -D warnings` before opening a PR.
+- The logo lives in `assets/mark.svg` only. After editing it run `pnpm icons`,
+  which regenerates the tray icons, the app icon and the PWA icons from that one
+  file — nothing else should contain the shape.
 - Security reports go to [SECURITY.md](SECURITY.md), never a public issue.
