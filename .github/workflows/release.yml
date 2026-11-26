@@ -127,12 +127,24 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
+      # Publishing with GITHUB_TOKEN does not start other workflows, so the
+      # release: published event that runs Packaging would be swallowed. An App
+      # token does trigger them.
+      - name: Mint a GitHub App token
+        id: app
+        if: vars.TAP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3.4.0
+        with:
+          client-id: ${{ vars.TAP_CLIENT_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: welpher
+          repositories: lantransport
       # Runs only when every platform built: a half-uploaded release stays a draft.
       # The notes are applied here as well because tauri-action rewrites the body
       # while attaching assets.
       - name: Publish the release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
         run: |
           notes="docs/notes/${RELEASE_TAG}.md"
           args=(--draft=false --latest)
