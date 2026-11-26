@@ -153,6 +153,7 @@ pub enum Body {
     Empty,
     Bytes(Vec<u8>),
     File { file: File, offset: u64, len: u64 },
+    Zip(Box<super::zip::Plan>),
 }
 
 pub struct Response {
@@ -191,6 +192,16 @@ impl Response {
             status,
             headers: Vec::new(),
             body: Body::File { file, offset, len },
+            content_length: len,
+        }
+    }
+
+    pub fn zip(status: u16, plan: super::zip::Plan) -> Self {
+        let len = plan.content_length();
+        Self {
+            status,
+            headers: vec![("Content-Type".into(), "application/zip".into())],
+            body: Body::Zip(Box::new(plan)),
             content_length: len,
         }
     }
@@ -237,6 +248,7 @@ pub fn write_response(
     match &mut response.body {
         Body::Empty => {}
         Body::Bytes(bytes) => stream.write_all(bytes)?,
+        Body::Zip(plan) => plan.write(stream)?,
         Body::File { file, offset, len } => {
             file.seek(SeekFrom::Start(*offset))?;
             let mut remaining = *len;

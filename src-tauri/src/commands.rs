@@ -18,6 +18,50 @@ pub fn notify(app: &AppHandle) {
     let _ = tray::refresh(app);
 }
 
+/// Adds dropped folders to the share list. Files are ignored: dropping a file on
+/// the window means "share this folder", not "upload it".
+fn normalize_shares(shares: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for share in shares {
+        let trimmed = share.trim();
+        if trimmed.is_empty() || out.iter().any(|kept| kept == trimmed) {
+            continue;
+        }
+        out.push(trimmed.to_string());
+    }
+    out
+}
+
+pub fn add_shared_folders(app: &AppHandle, paths: &[std::path::PathBuf]) -> (usize, usize) {
+    let state = app.state::<AppState>();
+    let added = {
+        let mut settings = state
+            .settings
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut added = 0;
+        let mut known = 0;
+        for path in paths {
+            if !path.is_dir() {
+                continue;
+            }
+            let text = path.to_string_lossy().into_owned();
+            if settings.shares.iter().any(|share| share == &text) {
+                known += 1;
+                continue;
+            }
+            settings.shares.push(text);
+            added += 1;
+        }
+        if added > 0 {
+            let _ = settings.save(app);
+        }
+        (added, known)
+    };
+    notify(app);
+    added
+}
+
 pub fn error_code(error: &StartError) -> String {
     match error {
         StartError::InvalidRoot => "invalid_root",
@@ -144,6 +188,33 @@ fn start_server(
         let _ = notify_app.emit("snapshot", snapshot);
         let _ = crate::tray::refresh(&notify_app);
     });
+    let upload_app = app.clone();
+    let on_upload: crate::server::UploadHook = Arc::new(move |notice| {
+        let state = upload_app.state::<AppState>();
+        let locale = state.ui_locale();
+        let body = i18n::t_args(
+            &locale,
+            "notify.uploaded",
+            &[
+                ("name", notice.name.clone()),
+                ("size", crate::server::listing::human_size(notice.bytes)),
+                ("peer", notice.peer.to_string()),
+            ],
+        );
+        if let Err(error) = upload_app
+            .notification()
+            .builder()
+            .title("LanTransport")
+            .body(body)
+            .show()
+        {
+            append_log(&upload_app, &format!("upload notification failed: {error}"));
+        }
+        append_log(
+            &upload_app,
+            &format!("uploaded {} from {}", notice.name, notice.peer),
+        );
+    });
     let handle = ServerHandle::start(
         &paths,
         port,
@@ -151,7 +222,10 @@ fn start_server(
         password,
         upload,
         log,
-        Some(on_urls_changed),
+        Some(crate::server::Hooks {
+            on_urls_changed: Some(on_urls_changed),
+            on_upload: Some(on_upload),
+        }),
     )
     .map_err(|error| error_code(&error))?;
 
@@ -276,6 +350,7 @@ pub fn update_prefs(
     auto_start: Option<bool>,
     minimize_to_tray: Option<bool>,
     theme: Option<String>,
+    shares: Option<Vec<String>>,
 ) -> Result<Snapshot, String> {
     let settings = {
         let mut settings = state
@@ -284,6 +359,9 @@ pub fn update_prefs(
             .unwrap_or_else(|error| error.into_inner());
         if let Some(theme) = theme {
             settings.theme = crate::settings::normalize_theme(&theme);
+        }
+        if let Some(shares) = shares {
+            settings.shares = normalize_shares(shares);
         }
         if let Some(locale) = locale {
             settings.locale = if locale == "auto" {
@@ -393,4 +471,15 @@ pub fn update_password(
     }
     let _ = settings.save(&app);
     state::snapshot(&app)
+}
+
+#[cfg(test)]
+mod share_tests {
+    use super::normalize_shares;
+
+    #[test]
+    fn shares_are_trimmed_and_deduplicated() {
+        let out = normalize_shares(vec![" /a ".into(), String::new(), "/a".into(), "/b".into()]);
+        assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]);
+    }
 }

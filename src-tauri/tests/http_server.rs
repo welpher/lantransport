@@ -665,6 +665,7 @@ fn share_page_ships_the_listing_controls() {
     // Each of these is a feature added on purpose; losing one silently would be
     // a regression a user notices only on their phone.
     for needle in [
+        "?zip=1",
         "id=\"refresh\"",
         "id=\"sort-select\"",
         "id=\"meta\"",
@@ -681,4 +682,225 @@ fn share_page_ships_the_listing_controls() {
 
     let mobile = get(server.port, "/?lang=zh-CN").text();
     assert!(mobile.contains("刷新"), "zh-CN page should be translated");
+}
+
+#[test]
+fn zips_the_current_directory() {
+    let root = temp_root("zip");
+    let server = start(&root, None);
+
+    let reply = get(server.port, "/?zip=1");
+    assert_eq!(reply.status, 200);
+    assert_eq!(reply.header("content-type"), Some("application/zip"));
+    assert!(reply.body.starts_with(b"PK\x03\x04"), "should be a zip");
+    let declared: usize = reply
+        .header("content-length")
+        .and_then(|value| value.parse().ok())
+        .expect("content-length");
+    assert_eq!(declared, reply.body.len(), "length must be exact");
+    assert!(
+        reply
+            .header("content-disposition")
+            .unwrap_or_default()
+            .contains("attachment")
+    );
+
+    let text = String::from_utf8_lossy(&reply.body);
+    assert!(
+        text.contains("hello.txt"),
+        "entry names live in the archive"
+    );
+    assert!(text.contains("sub/"), "directories are listed");
+    assert!(!text.contains(".env"), "hidden files stay out");
+    assert!(text.contains("PK\x01\x02"), "central directory is present");
+
+    let nested = get(server.port, "/sub/?zip=1");
+    assert_eq!(nested.status, 200);
+    assert!(nested.body.starts_with(b"PK\x03\x04"));
+}
+
+#[test]
+fn zip_of_an_unreadable_directory_is_404() {
+    let root = temp_root("zip-bad");
+    let server = start(&root, None);
+    assert_eq!(get(server.port, "/missing/?zip=1").status, 404);
+}
+
+#[test]
+fn uploads_follow_the_folder_being_viewed() {
+    let (root, server) = upload_server("upload-target");
+    let reply = put(
+        server.port,
+        "dir=%2Fsub%2F&name=nested.txt",
+        Some("k3y"),
+        "in sub",
+    );
+    assert_eq!(reply.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(root.join("sub/nested.txt")).unwrap(),
+        "in sub"
+    );
+    assert!(!root.join("uploads/nested.txt").exists());
+
+    // Encoded characters in the path must decode exactly once: the page sends
+    // "sub dir" as %2Fsub%20dir%2F.
+    std::fs::create_dir_all(root.join("sub dir")).unwrap();
+    let spaced = put(
+        server.port,
+        "dir=%2Fsub%20dir%2F&name=spaced.txt",
+        Some("k3y"),
+        "in spaced",
+    );
+    assert_eq!(spaced.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(root.join("sub dir/spaced.txt")).unwrap(),
+        "in spaced"
+    );
+
+    // A traversal in ?dir= must not reach outside the share.
+    let escaped = put(
+        server.port,
+        "dir=%2F..%2F&name=escape.txt",
+        Some("k3y"),
+        "nope",
+    );
+    assert_eq!(escaped.status, 404);
+    assert!(!root.with_extension("escape.txt").exists());
+}
+
+#[test]
+fn serves_the_web_manifest_and_icons() {
+    let root = temp_root("pwa");
+    let server = start(&root, None);
+
+    let manifest = get(server.port, "/manifest.webmanifest");
+    assert_eq!(manifest.status, 200);
+    assert_eq!(
+        manifest.header("content-type"),
+        Some("application/manifest+json")
+    );
+    let text = manifest.text();
+    assert!(text.contains("\"display\": \"standalone\""));
+    assert!(text.contains("192x192") && text.contains("512x512"));
+    assert!(text.contains("\"start_url\": \"/\""));
+
+    for path in ["/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"] {
+        let icon = get(server.port, path);
+        assert_eq!(icon.status, 200, "{path}");
+        assert!(icon.body.starts_with(&[0x89, b'P', b'N', b'G']), "{path}");
+    }
+}
+
+#[test]
+fn uploads_resume_from_where_they_stopped() {
+    let (root, server) = upload_server("resume");
+
+    // Half the file arrives, then the connection dies: the bytes are kept.
+    let partial = send(
+        server.port,
+        "PUT /upload?name=big.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nX-Upload-Total: 10\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello",
+    );
+    assert_eq!(partial.status, 400);
+    assert_eq!(partial.header("x-upload-offset"), Some("5"));
+    assert!(
+        !root.join("uploads/big.bin").exists(),
+        "incomplete upload not committed"
+    );
+
+    // The page asks how much is already there.
+    let probe = send(
+        server.port,
+        "HEAD /upload?name=big.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(probe.status, 204);
+    assert_eq!(probe.header("x-upload-offset"), Some("5"));
+
+    // A wrong offset is refused instead of mixing bytes.
+    let wrong = send(
+        server.port,
+        "PUT /upload?name=big.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nX-Upload-Total: 10\r\nX-Upload-Offset: 3\r\nContent-Length: 2\r\nConnection: close\r\n\r\nXX",
+    );
+    assert_eq!(wrong.status, 409);
+    assert_eq!(wrong.header("x-upload-offset"), Some("5"));
+
+    // Continue with the tail.
+    let rest = send(
+        server.port,
+        "PUT /upload?name=big.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nX-Upload-Total: 10\r\nX-Upload-Offset: 5\r\nContent-Length: 5\r\nConnection: close\r\n\r\nworld",
+    );
+    assert_eq!(rest.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(root.join("uploads/big.bin")).unwrap(),
+        "helloworld"
+    );
+    assert!(
+        !root.join("uploads/.lantransport-").exists()
+            && std::fs::read_dir(root.join("uploads"))
+                .unwrap()
+                .all(|entry| !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".part")),
+        "the part file is cleaned up after the commit"
+    );
+}
+
+#[test]
+fn reports_finished_uploads_to_the_desktop() {
+    use std::sync::{Arc, Mutex};
+
+    use lantransport_lib::server::UploadNotice;
+
+    let root = temp_root("hook");
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let sink = Arc::clone(&seen);
+    let hook: lantransport_lib::server::UploadHook = Arc::new(move |notice: UploadNotice| {
+        sink.lock()
+            .unwrap()
+            .push(format!("{}:{}:{}", notice.name, notice.bytes, notice.peer));
+    });
+    let shares = vec![root.clone()];
+    let server = ServerHandle::start(
+        &shares,
+        0,
+        false,
+        None,
+        UploadConfig {
+            enabled: true,
+            key: "k3y".into(),
+            max_bytes: 1024,
+        },
+        None,
+        Some(lantransport_lib::server::Hooks {
+            on_urls_changed: None,
+            on_upload: Some(hook),
+        }),
+    )
+    .expect("server starts");
+
+    let reply = put(server.port, "name=hooked.txt", Some("k3y"), "abc");
+    assert_eq!(reply.status, 201);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert!(seen[0].starts_with("hooked.txt:3:"), "got {:?}", seen[0]);
+}
+
+#[test]
+fn zips_only_the_selected_files() {
+    let root = temp_root("zip-selected");
+    let server = start(&root, None);
+
+    let reply = get(
+        server.port,
+        "/?zip=1&files=hello.txt%2Csub%2Fnested.bin%2Cmissing.txt",
+    );
+    assert_eq!(reply.status, 200);
+    assert!(reply.body.starts_with(b"PK\x03\x04"));
+    let text = String::from_utf8_lossy(&reply.body);
+    assert!(text.contains("hello.txt"), "picked file is in the archive");
+    assert!(
+        !text.contains("nested.bin"),
+        "only plain file names from this folder are accepted"
+    );
 }

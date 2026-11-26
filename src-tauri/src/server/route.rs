@@ -15,7 +15,7 @@ use super::http::{
     parse_range, split_target,
 };
 use super::listing::{self, Entry};
-use super::{ServerContext, i18n, paths};
+use super::{ServerContext, i18n, paths, zip};
 
 pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response {
     if let Method::Other(_) = &request.method {
@@ -33,6 +33,31 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         return simple(400, locale);
     }
 
+    if decoded == "/upload" && request.method == Method::Head {
+        return super::upload::probe(request, ctx);
+    }
+    if decoded == "/manifest.webmanifest" {
+        return Response::bytes(
+            200,
+            "application/manifest+json",
+            MANIFEST.as_bytes().to_vec(),
+        )
+        .header("Cache-Control", "public, max-age=86400");
+    }
+    if decoded == "/icon-192.png"
+        || decoded == "/icon-512.png"
+        || decoded == "/apple-touch-icon.png"
+    {
+        let bytes = if decoded == "/icon-192.png" {
+            APPLE_ICON
+        } else if decoded == "/icon-512.png" {
+            LARGE_ICON
+        } else {
+            APPLE_ICON
+        };
+        return Response::bytes(200, "image/png", bytes.to_vec())
+            .header("Cache-Control", "public, max-age=86400");
+    }
     if decoded == "/icon.png" || decoded == "/favicon.ico" {
         return Response::bytes(200, "image/png", app_icon().to_vec())
             .header("Cache-Control", "public, max-age=86400");
@@ -86,6 +111,9 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
             }
             return Response::empty(301).header("Location", location);
         }
+        if super::http::query_param(&request.target, "zip").is_some() {
+            return serve_zip(&dirs, &decoded, locale, &request.target);
+        }
         let uploads = ctx
             .upload
             .read()
@@ -115,6 +143,54 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         request,
         locale,
     )
+}
+
+/// `GET /<dir>/?zip=1` streams everything under that directory as one archive.
+fn serve_zip(
+    dirs: &[(usize, PathBuf)],
+    url_path: &str,
+    locale: &str,
+    request_target: &str,
+) -> Response {
+    let roots: Vec<&Path> = dirs.iter().map(|(_, dir)| dir.as_path()).collect();
+    let selected: Vec<String> =
+        super::http::query_param(request_target, "files").map_or_else(Vec::new, |value| {
+            value
+                .split(',')
+                .filter(|name| !name.is_empty())
+                .map(|name| name.to_string())
+                .collect()
+        });
+    let plan = match if selected.is_empty() {
+        zip::Plan::build(&roots)
+    } else {
+        zip::Plan::files(&roots, &selected)
+    } {
+        Ok(plan) => plan,
+        Err(error) => {
+            let message = escape_html(error.message());
+            return Response::html(
+                error.status(),
+                format!("<meta charset=\"utf-8\"><p>{message}</p>"),
+            );
+        }
+    };
+    if plan.is_empty() {
+        return simple(404, locale);
+    }
+    let name = archive_name(url_path, locale);
+    Response::zip(200, plan).header("Content-Disposition", content_disposition(&name))
+}
+
+fn archive_name(url_path: &str, locale: &str) -> String {
+    let last = url_path.split('/').rfind(|part| !part.is_empty());
+    match last {
+        Some(name) => format!("{name}.zip"),
+        None => {
+            let _ = locale;
+            "LanTransport.zip".to_string()
+        }
+    }
 }
 
 fn serve_listing(
@@ -354,3 +430,25 @@ fn nonce() -> String {
 fn app_icon() -> &'static [u8] {
     include_bytes!("../../../public/icon.png")
 }
+
+/// Installable metadata for phones: iOS honours the apple-* tags and opens the
+/// page without browser chrome; Android shows a home-screen shortcut (a full
+/// install prompt needs HTTPS, which a plain LAN address cannot provide).
+const MANIFEST: &str = r##"{
+  "name": "LanTransport",
+  "short_name": "LanTransport",
+  "description": "Browse and download files shared on this network",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
+"##;
+
+const APPLE_ICON: &[u8] = include_bytes!("../../../public/icon-192.png");
+const LARGE_ICON: &[u8] = include_bytes!("../../../public/icon-512.png");

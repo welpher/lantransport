@@ -1,6 +1,6 @@
-//! Enumerate LAN IPv4 addresses, primary route first.
+//! Enumerate LAN addresses: IPv4 first (primary route first), then IPv6.
 
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 
 const SKIPPED_PREFIXES: &[&str] = &[
     "lo", "utun", "awdl", "llw", "bridge", "gif", "stf", "anpi", "ap1", "docker", "vmnet",
@@ -57,6 +57,32 @@ fn primary_ipv4() -> Option<Ipv4Addr> {
     }
 }
 
+/// Global and unique-local IPv6 addresses. Link-local (`fe80::/10`) needs a zone
+/// id in the URL, which no phone camera accepts, so those are skipped.
+pub fn ipv6_addresses() -> Vec<Ipv6Addr> {
+    let mut addresses = Vec::new();
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        for interface in interfaces {
+            if is_virtual(&interface.name) {
+                continue;
+            }
+            if let if_addrs::IfAddr::V6(v6) = interface.addr {
+                let ip = v6.ip;
+                let first = ip.segments()[0];
+                let link_local = (first & 0xffc0) == 0xfe80;
+                let multicast = (first & 0xff00) == 0xff00;
+                if ip.is_loopback() || ip.is_unspecified() || link_local || multicast {
+                    continue;
+                }
+                if !addresses.contains(&ip) {
+                    addresses.push(ip);
+                }
+            }
+        }
+    }
+    addresses
+}
+
 pub fn port_available(port: u16) -> bool {
     if port == 0 {
         return false;
@@ -65,14 +91,28 @@ pub fn port_available(port: u16) -> bool {
     // (SO_REUSEADDR), so check both and release each probe immediately.
     let wildcard = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok();
     let loopback = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok();
-    wildcard && loopback
+    // The listener is dual-stack, so an IPv6-only process holding the port must
+    // count as taken too. Hosts without IPv6 simply report these as unavailable.
+    let v6_wildcard = std::net::TcpListener::bind((Ipv6Addr::UNSPECIFIED, port)).is_ok();
+    let v6_loopback = std::net::TcpListener::bind((Ipv6Addr::LOCALHOST, port)).is_ok();
+    wildcard && loopback && (v6_wildcard || v6_loopback)
+}
+
+pub fn format_url(ip: IpAddr, port: u16) -> String {
+    match ip {
+        IpAddr::V4(ip) => format!("http://{ip}:{port}"),
+        IpAddr::V6(ip) => format!("http://[{ip}]:{port}"),
+    }
 }
 
 pub fn urls(port: u16, allow_lan: bool) -> Vec<String> {
     let mut urls = vec![format!("http://127.0.0.1:{port}")];
     if allow_lan {
         for ip in ipv4_addresses() {
-            urls.push(format!("http://{ip}:{port}"));
+            urls.push(format_url(IpAddr::V4(ip), port));
+        }
+        for ip in ipv6_addresses() {
+            urls.push(format_url(IpAddr::V6(ip), port));
         }
     }
     urls
@@ -99,5 +139,22 @@ mod tests {
         assert!(!is_virtual("en0"));
         assert!(!is_virtual("Ethernet"));
         assert!(!is_virtual("Wi-Fi"));
+    }
+}
+
+#[cfg(test)]
+mod url_tests {
+    use super::*;
+
+    #[test]
+    fn ipv6_urls_are_bracketed() {
+        assert_eq!(
+            format_url(IpAddr::V6("fd00::1".parse().unwrap()), 8787),
+            "http://[fd00::1]:8787"
+        );
+        assert_eq!(
+            format_url(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 5)), 8787),
+            "http://192.168.1.5:8787"
+        );
     }
 }

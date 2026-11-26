@@ -24,8 +24,9 @@ files to the public internet.
   folder and must stay inside that folder. Hidden entries (`dotfiles`) are never listed or
   served, and upload file names are sanitized. Symlinks pointing outside the root
   are refused.
-- **Writes** are limited to uploads into `<first folder>/uploads/`: no delete,
-  rename or overwrite. Uploads are
+- **Writes** are limited to uploads into the shared folder the visitor is
+  browsing (older pages that send no target still write into the first folder's
+  `uploads/`): no delete, rename or overwrite. Uploads are
   written to a hidden temp file and linked into place; name collisions get a
   ` (1)` suffix.
 - **Active content** (HTML, SVG, XML and similar documents a browser can run

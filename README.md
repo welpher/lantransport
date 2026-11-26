@@ -29,9 +29,12 @@ No account, no cloud, no relay: the files never leave your network.
   files with the same name are labeled by source folder
 - **Browser UI** for any phone, tablet or computer — no app needed on the other side
 - **Read-only by default**: browse, preview, download; Range requests so downloads resume
+- **ZIP download from the folder row** — streamed, so a 2 GB folder starts
+  immediately and nothing is written to disk
 - **Sortable list**: name, size or modified time, ascending or descending — the choice is remembered, and **refresh** re-reads the folder without reloading the page
 - **Optional password** for browsing (HTTP Basic, username `share`)
-- **Key-gated uploads**: rotate the key anytime; files land in the first folder's `uploads/`
+- **Key-gated uploads**: rotate the key anytime; files land in the folder the visitor
+  is browsing (the first folder's `uploads/` is used by older links)
 - **QR code** for the LAN link, one click to copy
 - **Tray app**: keeps sharing while the window is closed; start/stop from the tray
 - **Always LAN-bound**: the server listens on your local network; there is no local-only mode to misconfigure
@@ -57,17 +60,16 @@ No account, no cloud, no relay: the files never leave your network.
 brew install --cask welpher/tap/lantransport
 ```
 
-### winget (Windows)
+### winget (Windows) — submitted, awaiting review
 
-```powershell
-winget install welpher.LanTransport
-```
+The manifest lives in [`packaging/winget`](packaging/winget) and the first pull
+request is in the review queue. Until it lands, install the `.exe` from the
+release below.
 
-### Arch Linux (AUR)
+### Arch Linux — PKGBUILD included, not in the AUR yet
 
-```bash
-yay -S lantransport-bin
-```
+[`packaging/aur/PKGBUILD`](packaging/aur/PKGBUILD) builds from the AppImage; it
+has not been submitted to the AUR. Meanwhile use the AppImage or the `.deb`.
 
 ### Direct downloads
 
