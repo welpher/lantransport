@@ -42,6 +42,7 @@ fn start_many(roots: &[&Path], password: Option<&str>, upload: UploadConfig) -> 
         password.map(str::to_string),
         upload,
         None,
+        None,
     )
     .expect("server starts")
 }

@@ -13,6 +13,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
@@ -40,10 +41,12 @@ pub struct ServerContext {
 
 pub struct ServerHandle {
     pub port: u16,
-    pub urls: Vec<String>,
+    pub urls: Arc<RwLock<Vec<String>>>,
     pub started_at: SystemTime,
     shutdown: Arc<AtomicBool>,
     context: Arc<ServerContext>,
+    urls_tx: Option<Sender<()>>,
+    monitor: Option<JoinHandle<()>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -74,6 +77,7 @@ impl ServerHandle {
         password: Option<String>,
         upload: UploadConfig,
         log: Option<PathBuf>,
+        on_urls_changed: Option<Arc<dyn Fn() + Send + Sync>>,
     ) -> Result<Self, StartError> {
         let mut mounts = Vec::new();
         for share in shares {
@@ -145,18 +149,57 @@ impl ServerHandle {
             .spawn(move || accept_loop(listener, context, stop_flag, active))
             .map_err(|error| StartError::Io(error.to_string()))?;
 
+        // Addresses change when the machine switches networks; keep the
+        // advertised URLs in sync without restarting the listener.
+        let urls = Arc::new(RwLock::new(lan::urls(port, allow_lan)));
+        let (urls_tx, urls_rx) = mpsc::channel::<()>();
+        let monitor_urls = Arc::clone(&urls);
+        let monitor = thread::Builder::new()
+            .name("lantransport-net".into())
+            .spawn(move || {
+                loop {
+                    if urls_rx.recv_timeout(Duration::from_secs(15)).is_ok() {
+                        break;
+                    }
+                    let next = lan::urls(port, allow_lan);
+                    let changed = {
+                        let mut current = monitor_urls
+                            .write()
+                            .unwrap_or_else(|error| error.into_inner());
+                        if *current == next {
+                            false
+                        } else {
+                            *current = next;
+                            true
+                        }
+                    };
+                    if changed && let Some(notify) = &on_urls_changed {
+                        notify();
+                    }
+                }
+            })
+            .map_err(|error| StartError::Io(error.to_string()))?;
+
         Ok(Self {
             port,
-            urls: lan::urls(port, allow_lan),
+            urls,
             started_at: SystemTime::now(),
             shutdown,
             context: Arc::clone(&context_for_handle),
+            urls_tx: Some(urls_tx),
+            monitor: Some(monitor),
             thread: Some(thread),
         })
     }
 
     pub fn stop(&mut self) {
         self.shutdown.store(true, Ordering::Relaxed);
+        if let Some(sender) = self.urls_tx.take() {
+            let _ = sender.send(());
+        }
+        if let Some(monitor) = self.monitor.take() {
+            let _ = monitor.join();
+        }
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }

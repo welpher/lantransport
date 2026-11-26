@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
@@ -136,8 +138,22 @@ fn start_server(
         .app_log_dir()
         .ok()
         .map(|dir| dir.join("lantransport.log"));
-    let handle = ServerHandle::start(&paths, port, allow_lan, password, upload, log)
-        .map_err(|error| error_code(&error))?;
+    let notify_app = app.clone();
+    let on_urls_changed: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let snapshot = state::snapshot(&notify_app);
+        let _ = notify_app.emit("snapshot", snapshot);
+        let _ = crate::tray::refresh(&notify_app);
+    });
+    let handle = ServerHandle::start(
+        &paths,
+        port,
+        allow_lan,
+        password,
+        upload,
+        log,
+        Some(on_urls_changed),
+    )
+    .map_err(|error| error_code(&error))?;
 
     *state
         .server

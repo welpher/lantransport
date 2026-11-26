@@ -86,6 +86,7 @@ const elements = {
   shareQrWrap: $("share-qr-wrap"),
   shareQrImg: $<HTMLImageElement>("share-qr-img"),
   urls: $<HTMLUListElement>("urls"),
+  networkNote: $("network-note"),
   qrWrap: $("qr-wrap"),
   qr: $<HTMLImageElement>("qr"),
   open: $<HTMLButtonElement>("open"),
@@ -107,6 +108,8 @@ let qrFor: string | null = null;
 let shareQrUrl: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
+let networkNoteTimer: number | null = null;
+let networkNote = false;
 let portTimer: number | null = null;
 let portStatus: "unknown" | "free" | "used" = "unknown";
 
@@ -209,6 +212,7 @@ function text() {
     groupUploads: t("ui.group_uploads"),
     groupBehavior: t("ui.group_behavior"),
     settingsLocked: t("ui.settings_locked"),
+    networkChanged: t("ui.network_changed"),
     security: t("ui.security"),
     version: t("ui.version"),
   };
@@ -321,6 +325,8 @@ function apply(): void {
   elements.shareKeyLabel.textContent = label.uploadKey;
   elements.copyShareKey.textContent = label.copyKey;
   elements.shareUploadLink.textContent = label.copyLink;
+  elements.networkNote.hidden = !(running && networkNote);
+  elements.networkNote.textContent = label.networkChanged;
   elements.shareQr.textContent = label.uploadQr;
   elements.run.textContent = running ? label.stop : label.start;
   elements.run.classList.toggle("stop", running);
@@ -592,10 +598,21 @@ async function boot(): Promise<void> {
   void checkPort();
 
   await listen<Snapshot>("snapshot", (event) => {
-    const wasRunning = snapshot?.running;
+    const previous = snapshot;
+    const wasRunning = previous?.running ?? false;
     snapshot = event.payload;
     if (wasRunning !== snapshot.running) {
       syncInputs();
+    }
+    const urlsChanged =
+      wasRunning && JSON.stringify(previous?.urls ?? []) !== JSON.stringify(snapshot.urls);
+    if (urlsChanged) {
+      networkNote = true;
+      if (networkNoteTimer !== null) window.clearTimeout(networkNoteTimer);
+      networkNoteTimer = window.setTimeout(() => {
+        networkNote = false;
+        apply();
+      }, 8000);
     }
     apply();
   });
