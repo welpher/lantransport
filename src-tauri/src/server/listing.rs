@@ -743,7 +743,10 @@ tbody tr:hover { background: var(--row-hover); }
 }
 .dir .ext { color: var(--accent); border-color: transparent; background: rgba(37, 99, 235, .12); }
 .size, .time { color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.act { text-align: right; white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+/* Keep this a table cell: display:flex would drop vertical-align and the
+   buttons would hug the top of a two-line name. */
+.act { text-align: right; white-space: nowrap; }
+.act .btn + .btn { margin-left: 6px; }
 .btn {
   display: inline-block;
   font-size: 13px;
