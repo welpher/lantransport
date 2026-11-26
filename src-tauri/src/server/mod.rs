@@ -124,7 +124,10 @@ fn bind_dual_stack(port: u16) -> std::io::Result<TcpListener> {
 /// user sees (logs, notifications, throttling) should say `a.b.c.d`.
 fn unmap_peer(peer: std::net::IpAddr) -> std::net::IpAddr {
     match peer {
-        std::net::IpAddr::V6(v6) => v6.to_ipv4_mapped().map(std::net::IpAddr::V4).unwrap_or(peer),
+        std::net::IpAddr::V6(v6) => v6
+            .to_ipv4_mapped()
+            .map(std::net::IpAddr::V4)
+            .unwrap_or(peer),
         other => other,
     }
 }
@@ -391,7 +394,9 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
     let _ = stream.set_nodelay(true);
     let peer: IpAddr = stream
         .peer_addr()
-        .map_or(IpAddr::from(Ipv4Addr::UNSPECIFIED), |addr| unmap_peer(addr.ip()));
+        .map_or(IpAddr::from(Ipv4Addr::UNSPECIFIED), |addr| {
+            unmap_peer(addr.ip())
+        });
 
     let Ok(read_stream) = stream.try_clone() else {
         return;
