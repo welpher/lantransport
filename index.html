@@ -66,7 +66,9 @@
               <code id="share-key" class="key"></code>
               <button id="copy-share-key" class="btn"></button>
               <button id="share-upload-link" class="btn ghost"></button>
+              <button id="share-qr" class="btn ghost"></button>
             </div>
+            <div id="share-qr-wrap" class="upload-qr" hidden><img id="share-qr-img" alt="QR code" draggable="false" /></div>
           </section>
         </div>
 
@@ -76,6 +78,7 @@
             <label class="field port-field">
               <span id="port-label"></span>
               <input id="port" type="number" min="1" max="65535" inputmode="numeric" />
+              <small id="port-state" class="hint"></small>
             </label>
             <div class="field">
               <label for="password" id="password-label"></label>

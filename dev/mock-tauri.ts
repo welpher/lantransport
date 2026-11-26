@@ -9,7 +9,7 @@ const snapshot = {
   platform: "macos",
   settings: {
     shares: ["/Users/me/Downloads", "/Volumes/Photos"],
-    port: 8000,
+    port: 8787,
     password: null,
     remember_password: false,
     auto_start: false,
@@ -21,23 +21,14 @@ const snapshot = {
   },
   running,
   port: running ? 8000 : null,
-  urls: running ? ["http://127.0.0.1:8000", "http://192.168.1.24:8000"] : [],
+  urls: running ? ["http://127.0.0.1:8787", "http://192.168.1.24:8787"] : [],
   started_at_ms: null,
   last_error: null,
 };
 
-let snapshotCalls = 0;
-
 export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (command === "get_snapshot") {
-    if (params.get("rotate") === "1" && snapshot.running) {
-      snapshotCalls++;
-      snapshot.urls = snapshotCalls <= 1
-        ? ["http://127.0.0.1:8000", "http://192.168.1.24:8000"]
-        : ["http://127.0.0.1:8000", "http://10.0.0.9:8000"];
-    }
-    return structuredClone(snapshot) as T;
-  }
+  if (command === "check_port") return ((args?.port as number) !== 9999) as T;
+  if (command === "get_snapshot") return structuredClone(snapshot) as T;
   if (command === "update_password") {
     snapshot.settings.password = (args?.password as string | null) ?? null;
     return structuredClone(snapshot) as T;
@@ -49,7 +40,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   if (command === "start_sharing") {
     snapshot.running = true;
     snapshot.port = 8000;
-    snapshot.urls = ["http://127.0.0.1:8000", "http://192.168.1.24:8000"];
+    snapshot.urls = ["http://127.0.0.1:8787", "http://192.168.1.24:8787"];
     return structuredClone(snapshot) as T;
   }
   if (command === "stop_sharing") {
@@ -61,16 +52,7 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   return null as T;
 }
 
-export async function listen<T>(
-  _event: string,
-  handler: (event: { payload: T }) => void,
-): Promise<() => void> {
-  if (params.get("rotate") === "1" && snapshot.running) {
-    window.setTimeout(() => {
-      snapshot.urls = ["http://127.0.0.1:8000", "http://10.0.0.9:8000"];
-      handler({ payload: structuredClone(snapshot) as T });
-    }, 1500);
-  }
+export async function listen(): Promise<() => void> {
   return () => {};
 }
 

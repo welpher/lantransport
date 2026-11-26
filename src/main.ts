@@ -55,6 +55,7 @@ const elements = {
   folders: $("folders"),
   addFolder: $<HTMLButtonElement>("add-folder"),
   portLabel: $("port-label"),
+  portState: $("port-state"),
   port: $<HTMLInputElement>("port"),
   passwordLabel: $("password-label"),
   passwordHint: $("password-hint"),
@@ -81,8 +82,10 @@ const elements = {
   shareKey: $("share-key"),
   copyShareKey: $<HTMLButtonElement>("copy-share-key"),
   shareUploadLink: $<HTMLButtonElement>("share-upload-link"),
+  shareQr: $<HTMLButtonElement>("share-qr"),
+  shareQrWrap: $("share-qr-wrap"),
+  shareQrImg: $<HTMLImageElement>("share-qr-img"),
   urls: $<HTMLUListElement>("urls"),
-  networkNote: $("network-note"),
   qrWrap: $("qr-wrap"),
   qr: $<HTMLImageElement>("qr"),
   open: $<HTMLButtonElement>("open"),
@@ -101,11 +104,36 @@ let tab: "share" | "settings" = "share";
 let busy = false;
 let localError: string | null = null;
 let qrFor: string | null = null;
+let shareQrUrl: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
+let portTimer: number | null = null;
+let portStatus: "unknown" | "free" | "used" = "unknown";
 
-let networkNoteTimer: number | null = null;
-let networkNote = false;
+const portValue = (): number => Number(elements.port.value);
+
+async function checkPort(): Promise<void> {
+  if (snapshot?.running) return;
+  const port = portValue();
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    portStatus = "unknown";
+    apply();
+    return;
+  }
+  try {
+    const free = await invoke<boolean>("check_port", { port });
+    if (portValue() !== port) return;
+    portStatus = free ? "free" : "used";
+  } catch {
+    portStatus = "unknown";
+  }
+  apply();
+}
+
+function schedulePortCheck(): void {
+  if (portTimer !== null) window.clearTimeout(portTimer);
+  portTimer = window.setTimeout(() => void checkPort(), 350);
+}
 
 async function persistPassword(password: string | null): Promise<void> {
   try {
@@ -126,7 +154,7 @@ function schedulePasswordSave(): void {
 
 const draft = {
   shares: [] as string[],
-  port: 8000,
+  port: 8787,
   password: "",
 };
 
@@ -144,6 +172,8 @@ function text() {
     reveal: t("ui.reveal"),
     noFolder: t("ui.no_folder"),
     port: t("ui.port"),
+    portAvailable: t("ui.port_available"),
+    portInUse: t("ui.port_in_use"),
     password: t("ui.password"),
     passwordHint: t("ui.password_hint"),
     clear: t("ui.clear"),
@@ -162,6 +192,7 @@ function text() {
     uploadKey: t("ui.upload_key"),
     regenerate: t("ui.regenerate"),
     copyLink: t("ui.copy_link"),
+    uploadQr: t("ui.upload_qr"),
     maxUpload: t("ui.max_upload"),
     uploadHint: t("ui.upload_hint"),
     sharing: t("ui.sharing"),
@@ -178,7 +209,6 @@ function text() {
     groupUploads: t("ui.group_uploads"),
     groupBehavior: t("ui.group_behavior"),
     settingsLocked: t("ui.settings_locked"),
-    networkChanged: t("ui.network_changed"),
     security: t("ui.security"),
     version: t("ui.version"),
   };
@@ -273,6 +303,9 @@ function apply(): void {
   elements.foldersHint.textContent = label.foldersHint;
   elements.addFolder.textContent = label.addFolder;
   elements.portLabel.textContent = label.port;
+  elements.portState.textContent =
+    portStatus === "free" ? label.portAvailable : portStatus === "used" ? label.portInUse : "";
+  elements.portState.classList.toggle("warn", portStatus === "used");
   elements.passwordLabel.textContent = label.password;
   elements.passwordHint.textContent = label.passwordHint;
   elements.passwordClear.textContent = "×";
@@ -288,8 +321,7 @@ function apply(): void {
   elements.shareKeyLabel.textContent = label.uploadKey;
   elements.copyShareKey.textContent = label.copyKey;
   elements.shareUploadLink.textContent = label.copyLink;
-  elements.networkNote.hidden = !(running && networkNote);
-  elements.networkNote.textContent = label.networkChanged;
+  elements.shareQr.textContent = label.uploadQr;
   elements.run.textContent = running ? label.stop : label.start;
   elements.run.classList.toggle("stop", running);
   elements.open.textContent = label.open;
@@ -311,6 +343,10 @@ function apply(): void {
     && (settings?.allow_uploads ?? false)
     && Boolean(settings?.upload_key);
   elements.uploadShare.hidden = !shareUploads;
+  if (!shareUploads) {
+    elements.shareQrWrap.hidden = true;
+    shareQrUrl = null;
+  }
   elements.shareKey.textContent = settings?.upload_key ?? "";
   elements.allowUploads.checked = settings?.allow_uploads ?? false;
   elements.uploadSettings.hidden = !(settings?.allow_uploads ?? false);
@@ -324,7 +360,9 @@ function apply(): void {
   elements.status.classList.toggle("on", running);
   elements.statusText.textContent = busy ? label.starting : running ? label.running : label.stopped;
 
-  elements.run.disabled = busy || (!running && draft.shares.length === 0);
+  const portInvalid = !Number.isInteger(portValue()) || portValue() < 1 || portValue() > 65535;
+  elements.run.disabled =
+    busy || (!running && (draft.shares.length === 0 || portInvalid || portStatus === "used"));
 
   for (const control of [
     elements.addFolder,
@@ -453,8 +491,8 @@ async function stop(): Promise<void> {
   apply();
   try {
     snapshot = await invoke<Snapshot>("stop_sharing");
-    networkNote = false;
     syncInputs();
+    void checkPort();
   } catch (error) {
     localError = String(error);
   }
@@ -551,23 +589,13 @@ async function boot(): Promise<void> {
 
   syncInputs();
   apply();
+  void checkPort();
 
   await listen<Snapshot>("snapshot", (event) => {
-    const previous = snapshot;
-    const wasRunning = previous?.running ?? false;
+    const wasRunning = snapshot?.running;
     snapshot = event.payload;
     if (wasRunning !== snapshot.running) {
       syncInputs();
-    }
-    const urlsChanged =
-      wasRunning && JSON.stringify(previous?.urls ?? []) !== JSON.stringify(snapshot.urls);
-    if (urlsChanged) {
-      networkNote = true;
-      if (networkNoteTimer !== null) window.clearTimeout(networkNoteTimer);
-      networkNoteTimer = window.setTimeout(() => {
-        networkNote = false;
-        apply();
-      }, 8000);
     }
     apply();
   });
@@ -578,6 +606,8 @@ async function boot(): Promise<void> {
 }
 
 elements.addFolder.addEventListener("click", () => void addFolder());
+elements.port.addEventListener("input", schedulePortCheck);
+elements.port.addEventListener("blur", () => void checkPort());
 elements.password.addEventListener("input", schedulePasswordSave);
 elements.passwordClear.addEventListener("click", () => {
   elements.password.value = "";
@@ -626,6 +656,31 @@ elements.copyShareKey.addEventListener("click", () => {
   if (key) void flashCopy(key, elements.copyShareKey);
 });
 elements.shareUploadLink.addEventListener("click", copyUploadLink);
+elements.shareQr.addEventListener("click", () => {
+  void (async () => {
+    if (shareQrUrl) {
+      elements.shareQrWrap.hidden = true;
+      shareQrUrl = null;
+      return;
+    }
+    const key = snapshot?.settings.upload_key;
+    const base = selectedUrlValue();
+    if (!key || !base) {
+      localError = "not_running";
+      apply();
+      return;
+    }
+    const url = `${base}/?key=${encodeURIComponent(key)}`;
+    const dataUrl = await QRCode.toDataURL(url, {
+      margin: 1,
+      width: 336,
+      color: { dark: "#101828", light: "#ffffff" },
+    });
+    elements.shareQrImg.src = dataUrl;
+    elements.shareQrWrap.hidden = false;
+    shareQrUrl = url;
+  })();
+});
 elements.autoStart.addEventListener("change", () => {
   void updatePrefs({ autoStart: elements.autoStart.checked });
 });

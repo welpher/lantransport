@@ -14,6 +14,7 @@ pub fn run() {
             tray::show_main(app);
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
@@ -57,6 +58,7 @@ pub fn run() {
             commands::update_prefs,
             commands::update_upload,
             commands::update_password,
+            commands::check_port,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

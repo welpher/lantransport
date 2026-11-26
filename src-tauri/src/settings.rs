@@ -25,7 +25,7 @@ impl Default for Settings {
         Self {
             root: None,
             shares: Vec::new(),
-            port: 8000,
+            port: 8787,
             password: None,
             auto_start: false,
             minimize_to_tray: true,
