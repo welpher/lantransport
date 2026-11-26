@@ -19,7 +19,6 @@
 - [ ] Per-folder upload links instead of a global key
 - [ ] Upload progress list + history in the desktop app
 - [ ] QR code for upload links (currently browse link)
-- [ ] mDNS name (`lantransport.local`) so nobody has to type an IP
 - [ ] Clipboard channel (text + images) between devices
 - [ ] Connect hosted Weblate and open translation PRs
 

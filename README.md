@@ -29,6 +29,7 @@ No account, no cloud, no relay: the files never leave your network.
   files with the same name are labeled by source folder
 - **Browser UI** for any phone, tablet or computer — no app needed on the other side
 - **Read-only by default**: browse, preview, download; Range requests so downloads resume
+- **Sortable list**: name, size or modified time, ascending or descending
 - **Optional password** for browsing (HTTP Basic, username `share`)
 - **Key-gated uploads**: rotate the key anytime; files land in the first folder's `uploads/`
 - **QR code** for the LAN link, one click to copy
@@ -37,6 +38,16 @@ No account, no cloud, no relay: the files never leave your network.
 - **Cross-platform**: macOS (Intel & Apple Silicon), Windows, Linux
 - Light/dark follows the system; English and 中文 today, more via [Weblate](docs/TRANSLATING.md)
 - Small installers: the app uses the system webview instead of bundling a browser
+
+## Screenshots
+
+| Sharing | Settings |
+|---|---|
+| ![Sharing](docs/screenshots/app-running.png) | ![Settings](docs/screenshots/app-settings.png) |
+
+| Phone | Desktop |
+|---|---|
+| ![Phone](docs/screenshots/web-mobile.png) | ![Desktop](docs/screenshots/web-desktop.png) |
 
 ## Install
 
