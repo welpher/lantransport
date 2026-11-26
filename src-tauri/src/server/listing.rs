@@ -1022,7 +1022,6 @@ select:focus-visible { border-color: var(--accent); }
 }
 "#;
 
-
 const UPLOAD_CSS: &str = r#"
 .upload { gap: 10px; }
 .up-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
