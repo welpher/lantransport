@@ -1,0 +1,59 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not paste upload keys, full local paths
+        or anything else you would not put on a public page.
+  - type: input
+    id: version
+    attributes:
+      label: LanTransport version
+      description: Shown at the bottom right of the window, e.g. `version 0.2.0 · macos`.
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux (deb/rpm)
+        - Linux (AppImage)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Desktop window
+        - Browser page served on the LAN
+        - Mobile browser (which one?)
+        - Installer / startup
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        The app log is at `~/Library/Logs/app.lantransport.desktop/lantransport.log` (macOS),
+        `%LOCALAPPDATA%\app.lantransport.desktop\logs\lantransport.log` (Windows) or
+        `~/.local/share/app.lantransport.desktop/logs/lantransport.log` (Linux).
+        Paste the last lines around the failure.
+      render: text
+    validations:
+      required: false

@@ -655,3 +655,30 @@ fn share_page_uses_the_app_icon() {
     assert_eq!(favicon.status, 200);
     assert_eq!(favicon.header("content-type"), Some("image/png"));
 }
+
+#[test]
+fn share_page_ships_the_listing_controls() {
+    let root = temp_root("controls");
+    let server = start(&root, None);
+    let html = get(server.port, "/").text();
+
+    // Each of these is a feature added on purpose; losing one silently would be
+    // a regression a user notices only on their phone.
+    for needle in [
+        "id=\"refresh\"",
+        "id=\"sort-select\"",
+        "id=\"meta\"",
+        "class=\"top-inner\"",
+        "lt_sort",
+        "position: sticky",
+        "scrollbar-width: none",
+    ] {
+        assert!(
+            html.contains(needle),
+            "share page no longer contains {needle}"
+        );
+    }
+
+    let mobile = get(server.port, "/?lang=zh-CN").text();
+    assert!(mobile.contains("刷新"), "zh-CN page should be translated");
+}

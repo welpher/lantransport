@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest something LanTransport should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that the app makes hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+      description: A rough idea is enough. If you have alternatives, list them.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where should it live
+      options:
+        - Desktop window
+        - Browser page served on the LAN
+        - Both
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you use instead
+      description: Other tools or workarounds, and why they do not fit.
+    validations:
+      required: false
