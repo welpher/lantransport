@@ -54,14 +54,26 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Create the draft release once
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $RELEASE_TAG already exists"
+            exit 0
+          fi
+          notes="docs/notes/${RELEASE_TAG}.md"
+          if [ -f "$notes" ]; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
+              --title "LanTransport $RELEASE_TAG" --notes-file "$notes"
+          else
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft \
               --title "LanTransport $RELEASE_TAG" \
               --notes "See the assets below to download and install LanTransport for your platform."
+          fi
 
   release:
     needs: [checks, create-release]
@@ -107,3 +119,24 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  publish:
+    needs: [release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      # Runs only when every platform built: a half-uploaded release stays a draft.
+      # The notes are applied here as well because tauri-action rewrites the body
+      # while attaching assets.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          notes="docs/notes/${RELEASE_TAG}.md"
+          args=(--draft=false --latest)
+          if [ -f "$notes" ]; then
+            args+=(--notes-file "$notes")
+          fi
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${args[@]}"
