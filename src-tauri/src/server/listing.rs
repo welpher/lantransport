@@ -555,7 +555,9 @@ h1 { font-size: 19px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.01em
 .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 input[type=search] {
   flex: 1 1 220px;
-  padding: 9px 12px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: var(--card);
@@ -724,7 +726,8 @@ tbody tr:hover { background: var(--row-hover); }
   background: var(--card);
   color: var(--text);
   font-size: 12.5px;
-  padding: 6px 10px;
+  height: 32px;
+  padding: 0 10px;
   border-radius: 8px;
   cursor: pointer;
 }
@@ -735,6 +738,10 @@ select:focus-visible {
 }
 select:focus-visible { border-color: var(--accent); }
 .up-btn { display: inline-flex; align-items: center; gap: 6px; }
+/* Every control in the top bar and the toolbar is the same height. */
+.top-actions .btn,
+.top-actions select { height: 32px; padding: 0 11px; }
+.top-actions select { padding: 0 10px; }
 .modal {
   position: fixed;
   inset: 0;
@@ -791,8 +798,11 @@ select:focus-visible { border-color: var(--accent); }
 
 /* iOS Safari zooms the page when a focused field is under 16px */
 @media (max-width: 620px) {
-  .top-actions select { font-size: 16px; }
-  input[type="search"] { font-size: 16px; }
+  .top-actions select,
+  .sort-select { font-size: 16px; height: 36px; }
+  input[type="search"] { font-size: 16px; height: 36px; flex: 1 1 140px; }
+  .top-actions .btn { height: 36px; }
+  .icon-btn { width: 36px; height: 36px; }
 }
 "#;
 
