@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --bg: #f5f7fa;
   --card: #ffffff;
   --text: #101828;
@@ -12,7 +13,8 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #101318;
     --card: #171b22;
     --text: #e7eaf0;
@@ -26,6 +28,21 @@
     --shadow: none;
   }
 }
+/* Explicit choice from the Appearance setting; overrides the system preference. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101318;
+  --card: #171b22;
+  --text: #e7eaf0;
+  --muted: #98a2b3;
+  --line: #262c36;
+  --accent: #6ea8fe;
+  --accent-weak: rgba(110, 168, 254, 0.14);
+  --danger: #ff7b72;
+  --ok: #3fb950;
+  --field: #12161c;
+  --shadow: none;
+}
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
@@ -37,22 +54,28 @@ body {
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* The window never scrolls; the panel under the tabs does. */
+  overflow: hidden;
 }
 .app {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   max-width: 820px;
   margin: 0 auto;
   padding: 20px 24px 22px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow: hidden;
 }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.header, .footer { flex: 0 0 auto; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .logo { width: 46px; height: 46px; border-radius: 12px; box-shadow: var(--shadow); }
 h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
 .tagline { margin: 1px 0 0; color: var(--muted); font-size: 12.5px; }
 .header-side { display: flex; align-items: center; gap: 9px; }
+#theme { max-width: 120px; }
 .pill {
   display: inline-flex;
   align-items: center;
@@ -78,7 +101,27 @@ select {
   border-radius: 8px;
   cursor: pointer;
 }
+/* No blue focus box after picking an option; the border carries the state. */
+select:focus,
+select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+select:focus-visible {
+  border-color: var(--accent);
+}
 .stack { display: flex; flex-direction: column; gap: 14px; }
+main.stack { flex: 1 1 auto; min-height: 0; }
+main.stack > .tabbar { flex: 0 0 auto; }
+.panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Reserve the scrollbar so switching tabs or adding a folder does not
+     shift the cards sideways when the scrollbar appears. */
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
 .tabbar {
   display: flex;
   align-items: center;

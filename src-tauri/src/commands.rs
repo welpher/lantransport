@@ -275,12 +275,16 @@ pub fn update_prefs(
     locale: Option<String>,
     auto_start: Option<bool>,
     minimize_to_tray: Option<bool>,
+    theme: Option<String>,
 ) -> Result<Snapshot, String> {
     let settings = {
         let mut settings = state
             .settings
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        if let Some(theme) = theme {
+            settings.theme = crate::settings::normalize_theme(&theme);
+        }
         if let Some(locale) = locale {
             settings.locale = if locale == "auto" {
                 "auto".into()

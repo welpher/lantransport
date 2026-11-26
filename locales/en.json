@@ -109,5 +109,10 @@
   "ui.upload_qr": "Upload link QR",
   "ui.port_available": "Port is free",
   "ui.port_in_use": "Port is in use",
-  "ui.network_changed": "Network changed — new addresses, rescan the QR code"
+  "ui.network_changed": "Network changed — new addresses, rescan the QR code",
+  "ui.theme": "Theme",
+  "ui.theme_auto": "Auto",
+  "ui.theme_light": "Light",
+  "ui.theme_dark": "Dark",
+  "page.refresh": "Refresh"
 }

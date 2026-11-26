@@ -18,6 +18,8 @@ pub struct Settings {
     pub upload_key: String,
     pub max_upload_mb: u32,
     pub locale: String,
+    /// `auto` follows the OS, otherwise `light` or `dark`.
+    pub theme: String,
 }
 
 impl Default for Settings {
@@ -33,6 +35,7 @@ impl Default for Settings {
             upload_key: String::new(),
             max_upload_mb: 4096,
             locale: "auto".into(),
+            theme: "auto".into(),
         }
     }
 }
@@ -59,6 +62,7 @@ impl Settings {
             settings.shares.push(root);
         }
         settings.root = None;
+        settings.theme = normalize_theme(&settings.theme);
         if settings.locale != "auto" {
             settings.locale = crate::server::i18n::normalize(&settings.locale)
                 .unwrap_or("en")
@@ -81,5 +85,27 @@ impl Settings {
             let _ = fs::set_permissions(&temp, fs::Permissions::from_mode(0o600));
         }
         fs::rename(&temp, &path).map_err(|error| error.to_string())
+    }
+}
+
+/// Only three values are meaningful; anything else falls back to following the system.
+pub fn normalize_theme(value: &str) -> String {
+    match value {
+        "light" | "dark" => value.to_string(),
+        _ => "auto".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_theme;
+
+    #[test]
+    fn normalizes_theme_values() {
+        assert_eq!(normalize_theme("auto"), "auto");
+        assert_eq!(normalize_theme("light"), "light");
+        assert_eq!(normalize_theme("dark"), "dark");
+        assert_eq!(normalize_theme("Dark"), "auto");
+        assert_eq!(normalize_theme(""), "auto");
     }
 }

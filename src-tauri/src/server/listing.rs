@@ -293,18 +293,21 @@ pub fn render(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
+<link rel="icon" href="/icon.png" type="image/png">
 <title>{title} · LanTransport</title>
 <style>{STYLE}{UPLOAD_CSS}</style>
-<div class="wrap">
-  <div class="top">
+<div class="top">
+  <div class="top-inner">
     <a class="brand" href="/">
-      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.2l2 2h6.8A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-11z"/></svg>
+      <img class="brand-mark" src="/icon.png" alt="" width="40" height="40" draggable="false">
       LanTransport
     </a>
     <div class="top-actions">{upload_button}<select id="lang" aria-label="{lang_label}">{lang_options}</select></div>
   </div>
+</div>
+<div class="wrap">
   <h1>{title}</h1>
-  <div class="meta">{items} · {total}</div>
+  <div class="meta" id="meta">{items} · {total}</div>
   <div class="crumbs">{crumbs}</div>
   <div class="bar">
     <input type="search" id="q" placeholder="{search}" autocomplete="off">
@@ -316,6 +319,7 @@ pub fn render(
       <option value="time:asc">{modified} ↑</option>
       <option value="time:desc">{modified} ↓</option>
     </select>
+    <button class="btn icon-btn" id="refresh" type="button" title="{refresh_label}" aria-label="{refresh_label}">&#8635;</button>
   </div>
   <div class="card list-card">
     <table>
@@ -327,91 +331,14 @@ pub fn render(
   <div class="foot" id="foot">{footer} · <a class="foot-brand" href="https://github.com/welpher/lantransport" target="_blank" rel="noreferrer noopener">LanTransport</a></div>
 </div>
 <script nonce="{nonce}">
-{upload_strings}
-const q = document.getElementById('q');
-const rows = Array.from(document.querySelectorAll('#list tr'));
-const foot = document.getElementById('foot');
-const base = foot.firstChild.textContent;
-const template = '{filtered}';
-q.addEventListener('input', () => {{
-  const term = q.value.trim().toLowerCase();
-  let shown = 0;
-  rows.forEach(row => {{
-    const hit = !term || (row.dataset.name || '').includes(term);
-    row.style.display = hit ? '' : 'none';
-    if (hit && row.dataset.name !== '..') shown++;
-  }});
-  foot.firstChild.textContent = term ? template.replace('{{n}}', shown) : base;
-}});
-q.addEventListener('keydown', event => {{
-  if (event.key === 'Escape') {{ q.value = ''; q.dispatchEvent(new Event('input')); }}
-}});
-document.querySelectorAll('#list tr[data-href]').forEach(row => {{
-  row.addEventListener('click', event => {{
-    if (event.target.closest('a, button')) return;
-    window.location.href = row.getAttribute('data-href');
-  }});
-}});
-const sortSelect = document.getElementById('sort-select');
-const state = {{ key: 'name', dir: 'asc' }};
-const groups = {{ parent: [], dir: [], file: [] }};
-rows.forEach(row => {{
-  const kind = row.dataset.kind || 'file';
-  groups[kind].push(row);
-}});
-const compare = (a, b) => {{
-  const sign = state.dir === 'desc' ? -1 : 1;
-  if (state.key === 'size' || state.key === 'time') {{
-    const left = Number(a.dataset[state.key]);
-    const right = Number(b.dataset[state.key]);
-    if (Number.isFinite(left) && Number.isFinite(right)) return (left - right) * sign;
-  }}
-  return a.dataset.name.localeCompare(b.dataset.name, undefined, {{ numeric: true }}) * sign;
-}};
-const applySort = (key, dir) => {{
-  state.key = key;
-  state.dir = dir;
-  const body = document.getElementById('list');
-  body.replaceChildren(...groups.parent, ...groups.dir.slice().sort(compare), ...groups.file.slice().sort(compare));
-  document.querySelectorAll('th .sort').forEach(button => {{
-    const active = button.dataset.sort === key;
-    button.classList.toggle('active', active);
-    button.dataset.dir = active ? dir : '';
-  }});
-  if (sortSelect) sortSelect.value = key + ':' + dir;
-}};
-document.querySelectorAll('th .sort').forEach(button => {{
-  button.addEventListener('click', () => {{
-    const key = button.dataset.sort;
-    const dir = state.key === key ? (state.dir === 'asc' ? 'desc' : 'asc') : (key === 'name' ? 'asc' : 'desc');
-    applySort(key, dir);
-  }});
-}});
-if (sortSelect) {{
-  sortSelect.value = 'name:asc';
-  sortSelect.addEventListener('change', () => {{
-    const [key, dir] = sortSelect.value.split(':');
-    applySort(key, dir);
-  }});
-}}
-const lang = document.getElementById('lang');
-if (lang) {{
-  if (new URLSearchParams(location.search).get('lang')) {{
-    document.cookie = 'lt_lang=' + lang.value + '; Path=/; Max-Age=31536000; SameSite=Lax';
-  }}
-  lang.addEventListener('change', () => {{
-    document.cookie = 'lt_lang=' + lang.value + '; Path=/; Max-Age=31536000; SameSite=Lax';
-    const url = new URL(location.href);
-    url.searchParams.set('lang', lang.value);
-    location.href = url.toString();
-  }});
-}}
+{upload_strings}{PAGE_JS}
 </script>
 <script nonce="{nonce}">{UPLOAD_JS}</script>
 "#,
         html_lang = escape_html(locale),
         title = escape_html(dir_name),
         lang_label = escape_html(&t("page.language")),
+        refresh_label = escape_html(&t("page.refresh")),
         lang_options = lang_options,
         items = escape_html(&items),
         total = escape_html(&total),
@@ -424,7 +351,7 @@ if (lang) {{
         rows = rows,
         empty = empty,
         footer = escape_html(&t(footer_key)),
-        filtered = filtered,
+        PAGE_JS = page_js(&filtered),
         nonce = escape_html(nonce),
         upload_modal = upload_modal,
         upload_button = upload_button,
@@ -437,6 +364,145 @@ if (lang) {{
 
 fn js_string(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
+}
+
+/// Client behaviour for the listing: filter, sort, row clicks, language and the
+/// in-page refresh. Kept out of the `format!` string so braces stay readable;
+/// `__FILTERED__` is the already-escaped "showing {n} files" template.
+const PAGE_JS: &str = r#"
+const q = document.getElementById('q');
+const list = document.getElementById('list');
+const meta = document.getElementById('meta');
+const foot = document.getElementById('foot');
+const sortSelect = document.getElementById('sort-select');
+const base = foot.firstChild.textContent;
+const template = '__FILTERED__';
+
+// Remember the sort choice the same way the language is remembered.
+const readCookie = (name) => {
+  const hit = document.cookie.split('; ').find(part => part.startsWith(name + '='));
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : '';
+};
+const savedSort = readCookie('lt_sort');
+const initialSort = /^(name|size|time):(asc|desc)$/.test(savedSort) ? savedSort : 'name:asc';
+const state = { key: initialSort.split(':')[0], dir: initialSort.split(':')[1] };
+let rows = [];
+let groups = { parent: [], dir: [], file: [] };
+
+function applyFilter() {
+  const term = q.value.trim().toLowerCase();
+  let shown = 0;
+  rows.forEach(row => {
+    const hit = !term || (row.dataset.name || '').includes(term);
+    row.style.display = hit ? '' : 'none';
+    if (hit && row.dataset.name !== '..') shown++;
+  });
+  foot.firstChild.textContent = term ? template.replace('{n}', shown) : base;
+}
+
+function compare(a, b) {
+  const sign = state.dir === 'desc' ? -1 : 1;
+  if (state.key === 'size' || state.key === 'time') {
+    const left = Number(a.dataset[state.key]);
+    const right = Number(b.dataset[state.key]);
+    if (Number.isFinite(left) && Number.isFinite(right)) return (left - right) * sign;
+  }
+  return a.dataset.name.localeCompare(b.dataset.name, undefined, { numeric: true }) * sign;
+}
+
+function applySort(key, dir, remember) {
+  state.key = key;
+  state.dir = dir;
+  if (remember !== false) {
+    document.cookie = 'lt_sort=' + key + ':' + dir + '; Path=/; Max-Age=31536000; SameSite=Lax';
+  }
+  list.replaceChildren(...groups.parent, ...groups.dir.slice().sort(compare), ...groups.file.slice().sort(compare));
+  document.querySelectorAll('th .sort').forEach(button => {
+    const active = button.dataset.sort === key;
+    button.classList.toggle('active', active);
+    button.dataset.dir = active ? dir : '';
+  });
+  if (sortSelect) sortSelect.value = key + ':' + dir;
+}
+
+function bindRows() {
+  rows = Array.from(list.querySelectorAll('tr'));
+  groups = { parent: [], dir: [], file: [] };
+  rows.forEach(row => {
+    const kind = row.dataset.kind || 'file';
+    (groups[kind] || groups.file).push(row);
+  });
+  list.querySelectorAll('tr[data-href]').forEach(row => {
+    row.addEventListener('click', event => {
+      if (event.target.closest('a, button')) return;
+      window.location.href = row.getAttribute('data-href');
+    });
+  });
+  applySort(state.key, state.dir, false);
+  applyFilter();
+}
+
+q.addEventListener('input', applyFilter);
+q.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { q.value = ''; applyFilter(); }
+});
+document.querySelectorAll('th .sort').forEach(button => {
+  button.addEventListener('click', () => {
+    const key = button.dataset.sort;
+    const dir = state.key === key ? (state.dir === 'asc' ? 'desc' : 'asc') : (key === 'name' ? 'asc' : 'desc');
+    applySort(key, dir);
+  });
+});
+if (sortSelect) {
+  sortSelect.value = initialSort;
+  sortSelect.addEventListener('change', () => {
+    const [key, dir] = sortSelect.value.split(':');
+    applySort(key, dir);
+  });
+}
+
+const refresh = document.getElementById('refresh');
+if (refresh) {
+  refresh.addEventListener('click', async () => {
+    if (refresh.classList.contains('busy')) return;
+    refresh.classList.add('busy');
+    try {
+      const response = await fetch(location.href, { cache: 'no-store' });
+      if (!response.ok) throw new Error('status ' + response.status);
+      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const nextList = doc.getElementById('list');
+      const nextMeta = doc.getElementById('meta');
+      if (!nextList || !nextMeta) throw new Error('missing list');
+      list.replaceChildren(...Array.from(nextList.childNodes));
+      meta.textContent = nextMeta.textContent;
+      bindRows();
+    } catch (error) {
+      location.reload();
+      return;
+    } finally {
+      refresh.classList.remove('busy');
+    }
+  });
+}
+
+const lang = document.getElementById('lang');
+if (lang) {
+  if (new URLSearchParams(location.search).get('lang')) {
+    document.cookie = 'lt_lang=' + lang.value + '; Path=/; Max-Age=31536000; SameSite=Lax';
+  }
+  lang.addEventListener('change', () => {
+    document.cookie = 'lt_lang=' + lang.value + '; Path=/; Max-Age=31536000; SameSite=Lax';
+    const url = new URL(location.href);
+    url.searchParams.set('lang', lang.value);
+    location.href = url.toString();
+  });
+}
+
+bindRows();
+"#;
+
+fn page_js(filtered: &str) -> String {
+    PAGE_JS.replace("__FILTERED__", filtered)
 }
 
 pub const STYLE: &str = r#"
@@ -462,16 +528,25 @@ pub const STYLE: &str = r#"
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+/* Hide the scrollbar itself: reserving a slot always left a slim strip on the
+   right, and letting the scrollbar appear would shift the layout sideways.
+   With it hidden nothing is reserved and nothing can appear later, so the
+   listing never jumps. Wheel, trackpad, keyboard and touch still scroll. */
+html {
+  overflow-y: scroll;
+  scrollbar-width: none;
+}
+::-webkit-scrollbar { width: 0; height: 0; }
 body {
   margin: 0;
-  padding: 24px 16px 48px;
+  padding: 0;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
-.wrap { max-width: 960px; margin: 0 auto; }
-h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; word-break: break-all; }
+.wrap { max-width: 992px; margin: 0 auto; padding: 0 16px 48px; }
+h1 { font-size: 19px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.01em; word-break: break-all; }
 .meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
 .crumbs { font-size: 14px; margin-bottom: 14px; word-break: break-all; }
 .crumbs a { color: var(--accent); text-decoration: none; }
@@ -547,7 +622,7 @@ tbody tr:hover { background: var(--row-hover); }
 }
 .brand:hover { opacity: 1; text-decoration: underline; }
 @media (max-width: 620px) {
-  body { padding: 16px 10px 36px; }
+  .wrap { padding: 0 10px 36px; }
   th, td { padding: 10px; }
   .time, .time-head { display: none; }
   .size { font-size: 12px; }
@@ -599,22 +674,51 @@ tbody tr:hover { background: var(--row-hover); }
 
 
 /* header, brand, upload dialog */
-.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+/* Full-bleed sticky bar: the border spans the whole viewport, the content
+   inside stays aligned with .wrap. */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.top-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 992px;
+  margin: 0 auto;
+  padding: 16px 16px 14px;
+}
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--text);
   text-decoration: none;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.01em;
   opacity: 1;
 }
-.brand:hover { opacity: 1; text-decoration: none; }
-.brand-mark { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
-.top-actions { display: flex; align-items: center; gap: 8px; }
-.top-actions select {
+.brand:hover { opacity: .85; text-decoration: none; }
+.brand-mark { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; }
+@media (max-width: 620px) {
+  .top { margin-bottom: 14px; }
+  .top-inner { padding: 14px 10px 12px; }
+  .brand { font-size: 15px; }
+  .brand-mark { width: 32px; height: 32px; border-radius: 8px; }
+  h1 { font-size: 17.5px; }
+}
+.top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1; }
+.icon-btn.busy { animation: spin .9s linear infinite; pointer-events: none; opacity: .6; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.top-actions select,
+.sort-select {
   appearance: none;
   border: 1px solid var(--line);
   background: var(--card);
@@ -624,6 +728,12 @@ tbody tr:hover { background: var(--row-hover); }
   border-radius: 8px;
   cursor: pointer;
 }
+select:focus,
+select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+select:focus-visible { border-color: var(--accent); }
 .up-btn { display: inline-flex; align-items: center; gap: 6px; }
 .modal {
   position: fixed;
