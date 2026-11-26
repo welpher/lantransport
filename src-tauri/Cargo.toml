@@ -1,6 +1,6 @@
 [package]
 name = "lantransport"
-version = "0.3.0"
+version = "0.3.1"
 description = "Share files across your local network"
 authors = ["welpher"]
 edition = "2024"
