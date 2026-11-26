@@ -90,11 +90,16 @@ impl std::fmt::Display for StartError {
 
 /// Dual-stack when sharing on the LAN: IPv4 and IPv6 phones both connect, which
 /// matters on IPv6-only hotspots. Falls back to IPv4 if the host has no IPv6.
+///
+/// Windows defaults an IPv6 socket to `IPV6_V6ONLY=1`, so binding `[::]` there
+/// accepts *only* IPv6 and every IPv4 link breaks. socket2 lets us turn that off
+/// explicitly instead of relying on the platform default.
 fn bind(port: u16, allow_lan: bool) -> std::io::Result<TcpListener> {
     if allow_lan {
-        match TcpListener::bind((Ipv6Addr::UNSPECIFIED, port)) {
+        match bind_dual_stack(port) {
             Ok(listener) => return Ok(listener),
             Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => return Err(error),
+            // No IPv6 on this host: fall through to IPv4 only.
             Err(_) => {}
         }
     }
@@ -104,6 +109,24 @@ fn bind(port: u16, allow_lan: bool) -> std::io::Result<TcpListener> {
         Ipv4Addr::LOCALHOST
     };
     TcpListener::bind((host, port))
+}
+
+fn bind_dual_stack(port: u16) -> std::io::Result<TcpListener> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+    socket.set_only_v6(false)?;
+    socket.bind(&std::net::SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)).into())?;
+    socket.listen(1024)?;
+    Ok(socket.into())
+}
+
+/// Dual-stack sockets hand IPv4 clients over as `::ffff:a.b.c.d`; everything the
+/// user sees (logs, notifications, throttling) should say `a.b.c.d`.
+fn unmap_peer(peer: std::net::IpAddr) -> std::net::IpAddr {
+    match peer {
+        std::net::IpAddr::V6(v6) => v6.to_ipv4_mapped().map(std::net::IpAddr::V4).unwrap_or(peer),
+        other => other,
+    }
 }
 
 impl ServerHandle {
@@ -368,7 +391,7 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
     let _ = stream.set_nodelay(true);
     let peer: IpAddr = stream
         .peer_addr()
-        .map_or(IpAddr::from(Ipv4Addr::UNSPECIFIED), |addr| addr.ip());
+        .map_or(IpAddr::from(Ipv4Addr::UNSPECIFIED), |addr| unmap_peer(addr.ip()));
 
     let Ok(read_stream) = stream.try_clone() else {
         return;
