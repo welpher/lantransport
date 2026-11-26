@@ -1,4 +1,5 @@
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::server::i18n;
 use crate::server::upload::UploadConfig;
@@ -56,7 +57,55 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     if shares.is_empty() {
         return Err("no_folder".into());
     }
-    start_server(app, &shares, port, true, password, upload)
+    match start_server(app, &shares, port, true, password, upload) {
+        Ok(snapshot) => Ok(snapshot),
+        Err(code) => {
+            record_start_error(app, &code, true);
+            Err(code)
+        }
+    }
+}
+
+fn append_log(app: &AppHandle, message: &str) {
+    if let Ok(dir) = app.path().app_log_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("lantransport.log"))
+        {
+            use std::io::Write;
+            let _ = writeln!(
+                file,
+                "{} {message}",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+            );
+        }
+    }
+}
+
+fn record_start_error(app: &AppHandle, code: &str, notify_user: bool) {
+    let state = app.state::<AppState>();
+    *state
+        .last_error
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(code.to_string());
+    append_log(app, &format!("start failed code={code}"));
+    if notify_user {
+        let locale = state.ui_locale();
+        let reason = i18n::t(&locale, &format!("error.{code}"));
+        let body = i18n::t_args(&locale, "notify.start_failed", &[("reason", reason)]);
+        if let Err(error) = app
+            .notification()
+            .builder()
+            .title("LanTransport")
+            .body(body)
+            .show()
+        {
+            append_log(app, &format!("notification failed: {error}"));
+        }
+    }
+    notify(app);
 }
 
 fn start_server(
@@ -192,11 +241,7 @@ pub fn start_sharing(
             Ok(snapshot)
         }
         Err(code) => {
-            *state
-                .last_error
-                .lock()
-                .unwrap_or_else(|error| error.into_inner()) = Some(code.clone());
-            notify(&app);
+            record_start_error(&app, &code, false);
             Err(code)
         }
     }

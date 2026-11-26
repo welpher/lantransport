@@ -202,6 +202,9 @@ fn accept_loop(
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
+                // BSD/macOS accept() inherits O_NONBLOCK from the listener, which
+                // turns body reads into EAGAIN instead of blocking.
+                let _ = stream.set_nonblocking(false);
                 if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
                     let mut stream = stream;
                     let _ = http::status_line_only(&mut stream, 503);
@@ -262,6 +265,23 @@ fn discard_body<R: BufRead>(reader: &mut R, request: &http::Request) -> bool {
     std::io::copy(&mut limited, &mut std::io::sink()).is_ok()
 }
 
+/// Close a connection that still has unread request bytes in flight.
+///
+/// Closing such a socket makes the kernel send RST, which can discard a
+/// response the client has not finished reading. Shutting down the write half
+/// first sends FIN, so the client sees a clean end of stream after the
+/// response; the brief read that follows lets the peer finish sending before
+/// the socket is dropped. Bounded, and it never blocks for long: a client that
+/// has already stopped sending just sees the read timeout.
+fn close_with_unread_body<R: BufRead>(reader: &mut R, stream: &TcpStream) {
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(200)));
+    let _ = std::io::copy(
+        &mut std::io::Read::take(&mut *reader, 1024 * 1024),
+        &mut std::io::sink(),
+    );
+}
+
 fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(60)));
@@ -292,12 +312,22 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
                         let _ = stream.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
                         let _ = stream.flush();
                     }
-                    let mut response = if http::split_target(&request.target).0 == "/upload" {
-                        upload::handle(&mut reader, &request, &context, peer)
-                    } else {
-                        http::Response::empty(405).header("Allow", "GET, HEAD, PUT")
-                    };
+                    let (mut response, body_read) =
+                        if http::split_target(&request.target).0 == "/upload" {
+                            upload::handle(&mut reader, &request, &context, peer)
+                        } else {
+                            (
+                                http::Response::empty(405).header("Allow", "GET, HEAD, PUT"),
+                                false,
+                            )
+                        };
                     let _ = http::write_response(&mut stream, false, false, &mut response);
+                    // A rejected upload leaves the client still streaming its
+                    // body. Closing on that unread data sends RST, which can
+                    // discard the response before the client reads it.
+                    if !body_read {
+                        close_with_unread_body(&mut reader, &stream);
+                    }
                     break;
                 }
                 let keep_alive = request.wants_keep_alive();

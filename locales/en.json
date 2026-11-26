@@ -103,6 +103,10 @@
   "ui.clear": "Clear",
   "upload.set_key": "Set upload key",
   "upload.clear": "Clear upload key",
+  "page.sort": "Sort",
+  "upload.retry": "Retry failed",
+  "notify.start_failed": "Sharing could not start: {reason}",
+  "ui.upload_qr": "Upload link QR",
   "ui.port_available": "Port is free",
   "ui.port_in_use": "Port is in use"
 }
