@@ -103,5 +103,7 @@
   "ui.clear": "清空",
   "upload.set_key": "设置上传 key",
   "upload.clear": "清空上传 key",
+  "page.sort": "排序",
+  "upload.retry": "重试失败文件",
   "notify.start_failed": "共享启动失败：{reason}"
 }
