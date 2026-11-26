@@ -4,7 +4,6 @@ use std::fs::{self, File};
 use std::io::{BufRead, Write};
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::http::{Request, Response, query_pairs, query_param, split_target};
 use super::{ServerContext, i18n};
@@ -24,6 +23,66 @@ impl Default for UploadConfig {
             max_bytes: 4 * 1024 * 1024 * 1024,
         }
     }
+}
+
+/// Where a finished upload lands: the folder the visitor is looking at, or the
+/// legacy `uploads/` folder of the first share for pages that do not ask.
+fn upload_target(ctx: &ServerContext, query: &[(String, String)]) -> Option<PathBuf> {
+    let requested = query
+        .iter()
+        .find(|(name, _)| name == "dir")
+        .map(|(_, value)| value.as_str());
+    match requested {
+        None => ctx.mounts.first().map(|mount| mount.dir.join("uploads")),
+        Some(value) => {
+            let segments = super::paths::segments(value)?;
+            ctx.mounts.iter().find_map(|mount| {
+                super::paths::resolve_in(&mount.dir, &segments).filter(|path| path.is_dir())
+            })
+        }
+    }
+}
+
+/// `HEAD /upload?dir=&name=` answers how much of that file already arrived, so a
+/// dropped connection can continue instead of starting over.
+pub fn probe(request: &Request, ctx: &ServerContext) -> Response {
+    let locale = i18n::from_request(request);
+    let config = ctx
+        .upload
+        .read()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    if !config.enabled || config.key.is_empty() {
+        return fail(403, locale, "upload.err.disabled");
+    }
+    let supplied = request
+        .header("x-upload-key")
+        .map(str::to_string)
+        .or_else(|| query_param(&request.target, "key"));
+    let allowed = supplied
+        .is_some_and(|key| super::auth::constant_time_eq(key.as_bytes(), config.key.as_bytes()));
+    if !allowed {
+        return fail(403, locale, "upload.err.wrong_key");
+    }
+    let (_, raw_query) = split_target(&request.target);
+    let query = query_pairs(raw_query);
+    let Some(name) = query
+        .iter()
+        .find(|(key, _)| key == "name")
+        .map(|(_, value)| value.as_str())
+        .and_then(safe_file_name)
+    else {
+        return fail(400, locale, "upload.err.bad_name");
+    };
+    let Some(directory) = upload_target(ctx, &query) else {
+        return fail(404, locale, "upload.err.no_folder");
+    };
+    let offset = fs::metadata(part_path(&directory, &name))
+        .map(|meta| meta.len())
+        .unwrap_or(0);
+    Response::empty(204)
+        .header("X-Upload-Offset", offset.to_string())
+        .header("Cache-Control", "no-store")
 }
 
 pub fn handle<R: BufRead>(
@@ -73,10 +132,9 @@ pub fn handle<R: BufRead>(
         return (fail(400, locale, "upload.err.bad_name"), false);
     };
 
-    let Some(first) = ctx.mounts.first() else {
+    let Some(directory) = upload_target(ctx, &query) else {
         return (fail(404, locale, "upload.err.no_folder"), false);
     };
-    let directory = first.dir.join("uploads");
     if fs::create_dir_all(&directory).is_err() {
         return (fail(500, locale, "upload.err.write"), false);
     }
@@ -103,10 +161,19 @@ pub fn handle<R: BufRead>(
         Some(length)
     };
 
+    // Resume: the page probes with HEAD first and then sends only the missing
+    // tail with X-Upload-Offset / X-Upload-Total.
+    let offset = request
+        .header("x-upload-offset")
+        .and_then(|value| value.trim().parse::<u64>().ok());
+    let total = request
+        .header("x-upload-total")
+        .and_then(|value| value.trim().parse::<u64>().ok());
+
     super::log_event(
         ctx,
         &format!(
-            "upload start peer={peer} name=\"{}\" te={:?} cl={:?} ua=\"{}\"",
+            "upload start peer={peer} name=\"{}\" te={:?} cl={:?} offset={offset:?} total={total:?} ua=\"{}\"",
             name,
             request.header("transfer-encoding"),
             request.header("content-length"),
@@ -114,9 +181,17 @@ pub fn handle<R: BufRead>(
         ),
     );
 
-    let temp = temp_path(&directory);
-    let mut file = match File::create_new(&temp) {
-        Ok(file) => file,
+    let temp = part_path(&directory, &name);
+    let mut file = match open_part(&temp, offset) {
+        Ok(Some(file)) => file,
+        Ok(None) => {
+            let actual = fs::metadata(&temp).map(|meta| meta.len()).unwrap_or(0);
+            return (
+                fail(409, locale, "upload.err.offset")
+                    .header("X-Upload-Offset", actual.to_string()),
+                false,
+            );
+        }
         Err(_) => return (fail(500, locale, "upload.err.write"), false),
     };
 
@@ -124,8 +199,8 @@ pub fn handle<R: BufRead>(
         Some(length) => match copy_body(reader, &mut file, length) {
             Ok(written) => written,
             Err((written, error)) => {
+                // Keep the part file: the next attempt resumes from here.
                 drop(file);
-                let _ = fs::remove_file(&temp);
                 super::log_event(
                     ctx,
                     &format!(
@@ -144,7 +219,6 @@ pub fn handle<R: BufRead>(
             }
             Err(BodyError::Io(error)) => {
                 drop(file);
-                let _ = fs::remove_file(&temp);
                 super::log_event(
                     ctx,
                     &format!("upload failed peer={peer} name=\"{name}\" chunked error={error}"),
@@ -153,6 +227,22 @@ pub fn handle<R: BufRead>(
             }
         },
     };
+
+    let written = written + offset.unwrap_or(0);
+    if let Some(total) = total
+        && written != total
+    {
+        drop(file);
+        super::log_event(
+            ctx,
+            &format!("upload incomplete peer={peer} name=\"{name}\" {written}/{total}"),
+        );
+        return (
+            fail(400, locale, "upload.err.incomplete")
+                .header("X-Upload-Offset", written.to_string()),
+            true,
+        );
+    }
 
     if file.sync_all().is_err() {
         drop(file);
@@ -174,6 +264,13 @@ pub fn handle<R: BufRead>(
         ctx,
         &format!("upload ok peer={peer} name=\"{saved}\" bytes={written}"),
     );
+    if let Some(hook) = &ctx.on_upload {
+        hook(super::UploadNotice {
+            name: saved.clone(),
+            bytes: written,
+            peer,
+        });
+    }
     let body = format!(
         "{{\"name\":{},\"size\":{written}}}",
         serde_json_string(&saved)
@@ -379,14 +476,35 @@ fn commit(temp: &Path, directory: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+/// One part file per (folder, name): a retry after a dropped connection finds
+/// the bytes that made it and continues from there.
+fn part_path(directory: &Path, name: &str) -> PathBuf {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in name.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    directory.join(format!(".lantransport-{hash:016x}.part"))
+}
 
-fn temp_path(directory: &Path) -> PathBuf {
-    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    directory.join(format!(
-        ".lantransport-{}-{counter}.part",
-        std::process::id()
-    ))
+/// `Ok(Some(file))` to append from `offset`, `Ok(None)` when the offset does not
+/// match what is already on disk, `Err` when the file cannot be opened.
+fn open_part(temp: &Path, offset: Option<u64>) -> std::io::Result<Option<File>> {
+    match offset {
+        Some(offset) => {
+            let existing = fs::metadata(temp).map(|meta| meta.len()).unwrap_or(0);
+            if existing != offset {
+                return Ok(None);
+            }
+            let file = fs::OpenOptions::new().append(true).open(temp)?;
+            Ok(Some(file))
+        }
+        None => {
+            // Fresh start: drop whatever an earlier attempt left behind.
+            let _ = fs::remove_file(temp);
+            Ok(Some(File::create_new(temp)?))
+        }
+    }
 }
 
 fn serde_json_string(value: &str) -> String {
@@ -439,7 +557,7 @@ mod tests {
     fn commit_never_replaces_an_existing_name() {
         let dir = scratch_dir("collide");
         fs::write(dir.join("note.txt"), b"original").unwrap();
-        let temp = temp_path(&dir);
+        let temp = dir.join(".part");
         fs::write(&temp, b"newcomer").unwrap();
 
         let saved = commit(&temp, &dir, "note.txt").expect("committed");
@@ -459,10 +577,11 @@ mod tests {
         let handles: Vec<_> = payloads
             .iter()
             .cloned()
-            .map(|payload| {
+            .enumerate()
+            .map(|(index, payload)| {
                 let dir = dir.clone();
                 std::thread::spawn(move || {
-                    let temp = temp_path(&dir);
+                    let temp = dir.join(format!(".part-{index}"));
                     fs::write(&temp, payload.as_bytes()).unwrap();
                     commit(&temp, &dir, "race.txt")
                 })

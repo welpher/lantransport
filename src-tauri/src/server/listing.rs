@@ -132,11 +132,14 @@ pub fn render(
     for entry in &dirs {
         let name = escape_html(&entry.name);
         rows.push_str(&format!(
-            "<tr class='dir' data-kind='dir' data-name='{}' data-href='{}/'><td><div class='name'><span class='ext'>DIR</span><a href='{}/'>{}/</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'></td></tr>",
+            "<tr class='dir' data-kind='dir' data-name='{}' data-href='{}/'><td><div class='name'><span class='ext'>DIR</span><a href='{}/'>{}/</a></div></td><td class='size'>—</td><td class='time'>—</td><td class='act'><a class='btn' href='{}/?zip=1' download title='{zip_hint}'>{download}</a></td></tr>",
             escape_html(&entry.name.to_lowercase()),
             encode_segment(&entry.name),
             encode_segment(&entry.name),
-            name
+            name,
+            encode_segment(&entry.name),
+            zip_hint = t("page.zip_hint"),
+            download = t("page.download")
         ));
     }
 
@@ -250,6 +253,12 @@ pub fn render(
         String::new()
     };
 
+    let select_strings = format!(
+        "const SELECT_MSG = {{ selected: {}, all: {} }};",
+        js_string(&t("page.selected")),
+        js_string(&t("page.select_all")),
+    );
+
     let upload_strings = format!(
         "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {} }};",
         js_string(&t("upload.need_key")),
@@ -294,6 +303,13 @@ pub fn render(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="/icon.png" type="image/png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LanTransport">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name='theme-color' content='#f6f7f9' media='(prefers-color-scheme: light)'>
+<meta name='theme-color' content='#14171c' media='(prefers-color-scheme: dark)'>
 <title>{title} · LanTransport</title>
 <style>{STYLE}{UPLOAD_CSS}</style>
 <div class="top">
@@ -319,7 +335,14 @@ pub fn render(
       <option value="time:asc">{modified} ↑</option>
       <option value="time:desc">{modified} ↓</option>
     </select>
+    <button class="btn" id="select-mode" type="button">{select_label}</button>
     <button class="btn icon-btn" id="refresh" type="button" title="{refresh_label}" aria-label="{refresh_label}">&#8635;</button>
+  </div>
+  <div class="selectbar" id="selectbar" hidden>
+    <label class="pick-all"><input type="checkbox" id="pick-all"><span>{select_all}</span></label>
+    <span class="hint" id="select-info"></span>
+    <button class="btn" id="select-download" type="button">{download_label}</button>
+    <button class="btn ghost" id="select-cancel" type="button">{cancel_label}</button>
   </div>
   <div class="card list-card">
     <table>
@@ -331,6 +354,7 @@ pub fn render(
   <div class="foot" id="foot">{footer} · <a class="foot-brand" href="https://github.com/welpher/lantransport" target="_blank" rel="noreferrer noopener">LanTransport</a></div>
 </div>
 <script nonce="{nonce}">
+{select_strings}
 {upload_strings}{PAGE_JS}
 </script>
 <script nonce="{nonce}">{UPLOAD_JS}</script>
@@ -355,6 +379,11 @@ pub fn render(
         nonce = escape_html(nonce),
         upload_modal = upload_modal,
         upload_button = upload_button,
+        select_label = escape_html(&t("page.select")),
+        select_all = escape_html(&t("page.select_all")),
+        download_label = escape_html(&t("page.download")),
+        cancel_label = escape_html(&t("page.cancel")),
+        select_strings = select_strings,
         upload_strings = upload_strings,
         STYLE = STYLE,
         UPLOAD_CSS = UPLOAD_CSS,
@@ -434,10 +463,16 @@ function bindRows() {
   });
   list.querySelectorAll('tr[data-href]').forEach(row => {
     row.addEventListener('click', event => {
-      if (event.target.closest('a, button')) return;
+      if (event.target.closest('a, button, input')) return;
+      if (selecting) {
+        if (row.dataset.kind !== 'file') return;
+        togglePick(row.dataset.name);
+        return;
+      }
       window.location.href = row.getAttribute('data-href');
     });
   });
+  if (selecting) attachPicks();
   applySort(state.key, state.dir, false);
   applyFilter();
 }
@@ -482,6 +517,104 @@ if (refresh) {
     } finally {
       refresh.classList.remove('busy');
     }
+  });
+}
+
+const selectModeBtn = document.getElementById('select-mode');
+const selectBar = document.getElementById('selectbar');
+const selectInfo = document.getElementById('select-info');
+const selectAllBox = document.getElementById('pick-all');
+const selectDownload = document.getElementById('select-download');
+const selectCancel = document.getElementById('select-cancel');
+let selecting = false;
+const picked = new Set();
+
+function humanBytes(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = Number(bytes) || 0;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return (unit === 0 ? Math.round(value) : value.toFixed(1)) + ' ' + units[unit];
+}
+
+function fileRows() {
+  return rows.filter(row => row.dataset.kind === 'file');
+}
+
+function refreshPicked() {
+  let bytes = 0;
+  picked.forEach(name => {
+    const row = rows.find(item => item.dataset.kind === 'file' && item.dataset.name === name);
+    if (row) bytes += Number(row.dataset.size) || 0;
+  });
+  selectInfo.textContent = SELECT_MSG.selected
+    .replace('{n}', String(picked.size))
+    .replace('{size}', humanBytes(bytes));
+  selectDownload.disabled = picked.size === 0;
+  const files = fileRows();
+  selectAllBox.checked = files.length > 0 && files.every(row => picked.has(row.dataset.name));
+}
+
+function togglePick(name) {
+  if (picked.has(name)) picked.delete(name);
+  else picked.add(name);
+  fileRows().forEach(row => {
+    if (row.dataset.name !== name) return;
+    const box = row.querySelector('.row-pick');
+    if (box) box.checked = picked.has(name);
+  });
+  refreshPicked();
+}
+
+function attachPicks() {
+  fileRows().forEach(row => {
+    if (row.querySelector('.row-pick')) return;
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.className = 'row-pick';
+    box.checked = picked.has(row.dataset.name);
+    box.addEventListener('click', event => event.stopPropagation());
+    box.addEventListener('change', () => togglePick(row.dataset.name));
+    const cell = row.querySelector('.name');
+    if (cell) cell.prepend(box);
+  });
+}
+
+function leaveSelect() {
+  selecting = false;
+  picked.clear();
+  selectBar.hidden = true;
+  selectModeBtn.hidden = false;
+  document.querySelectorAll('.row-pick').forEach(box => box.remove());
+}
+
+if (selectModeBtn) {
+  selectModeBtn.addEventListener('click', () => {
+    selecting = true;
+    picked.clear();
+    selectBar.hidden = false;
+    selectModeBtn.hidden = true;
+    attachPicks();
+    refreshPicked();
+  });
+  selectCancel.addEventListener('click', leaveSelect);
+  selectAllBox.addEventListener('change', () => {
+    picked.clear();
+    if (selectAllBox.checked) fileRows().forEach(row => picked.add(row.dataset.name));
+    attachPicks();
+    fileRows().forEach(row => {
+      const box = row.querySelector('.row-pick');
+      if (box) box.checked = picked.has(row.dataset.name);
+    });
+    refreshPicked();
+  });
+  selectDownload.addEventListener('click', () => {
+    if (!picked.size) return;
+    const names = Array.from(picked).join(',');
+    location.href = location.pathname + '?zip=1&files=' + encodeURIComponent(names);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && selecting) leaveSelect();
   });
 }
 
@@ -576,6 +709,18 @@ th .sort.active { color: var(--accent); }
 th .sort.active::after { content: " ↑"; }
 th .sort.active[data-dir="desc"]::after { content: " ↓"; }
 .sort-select { display: none; }
+.selectbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.selectbar .hint { color: var(--muted); font-size: 13px; }
+.pick-all { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.pick-all input { width: 16px; height: 16px; accent-color: var(--accent); }
+.row-pick { width: 16px; height: 16px; margin-right: 10px; flex: 0 0 auto; accent-color: var(--accent); }
+#select-download[disabled] { opacity: .5; cursor: default; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--row-hover); }
 #list tr[data-href] { cursor: pointer; }
@@ -740,6 +885,7 @@ select:focus-visible { border-color: var(--accent); }
 .up-btn { display: inline-flex; align-items: center; gap: 6px; }
 /* Every control in the top bar and the toolbar is the same height. */
 .top-actions .btn,
+.bar .btn,
 .top-actions select { height: 32px; padding: 0 11px; }
 .top-actions select { padding: 0 10px; }
 .modal {
@@ -801,7 +947,8 @@ select:focus-visible { border-color: var(--accent); }
   .top-actions select,
   .sort-select { font-size: 16px; height: 36px; }
   input[type="search"] { font-size: 16px; height: 36px; flex: 1 1 140px; }
-  .top-actions .btn { height: 36px; }
+  .top-actions .btn,
+  .bar .btn { height: 36px; }
   .icon-btn { width: 36px; height: 36px; }
 }
 "#;
@@ -960,14 +1107,39 @@ const UPLOAD_JS: &str = r#"
     return minutes + 'm ' + Math.round(seconds % 60) + 's';
   }
 
-  function send(file, key, onProgress) {
+  function uploadUrl(file) {
+    // location.pathname is already percent-encoded; encode it once more only
+    // after decoding, or a folder called "a b" arrives as "a%20b" and fails.
+    let dirParam = location.pathname;
+    try { dirParam = decodeURIComponent(location.pathname); } catch (e) {}
+    return '/upload?dir=' + encodeURIComponent(dirParam) + '&name=' + encodeURIComponent(file.name);
+  }
+
+  // Ask how much of this file already reached the folder; a dropped connection
+  // then continues from there instead of sending everything again.
+  async function bytesAlreadyThere(url, key) {
+    try {
+      const response = await fetch(url, { method: 'HEAD', headers: { 'X-Upload-Key': key }, cache: 'no-store' });
+      if (!response.ok) return 0;
+      const value = Number(response.headers.get('X-Upload-Offset'));
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  async function send(file, key, onProgress) {
+    const url = uploadUrl(file);
+    const offset = Math.min(await bytesAlreadyThere(url, key), file.size);
+    if (file.size > 0 && offset >= file.size) return;
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      const url = '/upload?name=' + encodeURIComponent(file.name);
       xhr.open('PUT', url);
       xhr.setRequestHeader('X-Upload-Key', key);
+      xhr.setRequestHeader('X-Upload-Total', String(file.size));
+      if (offset > 0) xhr.setRequestHeader('X-Upload-Offset', String(offset));
       xhr.upload.onprogress = event => {
-        if (event.lengthComputable) onProgress(event.loaded);
+        if (event.lengthComputable) onProgress(offset + event.loaded);
       };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
@@ -976,7 +1148,7 @@ const UPLOAD_JS: &str = r#"
         reject(new Error(message || ('HTTP ' + xhr.status)));
       };
       xhr.onerror = () => reject(new Error('network'));
-      xhr.send(file);
+      xhr.send(offset > 0 ? file.slice(offset) : file);
     });
   }
 

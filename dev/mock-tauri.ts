@@ -53,9 +53,22 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
   return null as T;
 }
 
-export async function listen(): Promise<() => void> {
-  return () => {};
+type Handler = (event: { payload: unknown }) => void;
+const listeners = new Map<string, Set<Handler>>();
+
+export async function listen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void> {
+  const set = listeners.get(event) ?? new Set<Handler>();
+  set.add(handler as Handler);
+  listeners.set(event, set);
+  return () => {
+    set.delete(handler as Handler);
+  };
 }
+
+/** Dev only: drive the UI from the console, e.g. `__emit('snapshot', snapshot)`. */
+(globalThis as { __emit?: (event: string, payload: unknown) => void }).__emit = (event, payload) => {
+  listeners.get(event)?.forEach((handler) => handler({ payload }));
+};
 
 export async function open(): Promise<string | null> {
   return null;

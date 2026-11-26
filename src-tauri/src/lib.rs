@@ -5,7 +5,7 @@ mod state;
 mod tray;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -36,6 +36,13 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(drag) = event {
+                if let tauri::DragDropEvent::Drop { paths, .. } = drag {
+                    let (added, known) = commands::add_shared_folders(window.app_handle(), paths);
+                    let _ = window.app_handle().emit("drop-result", (added, known));
+                }
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let minimize = {
                     let state = window.app_handle().state::<AppState>();

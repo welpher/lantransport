@@ -8,9 +8,10 @@ pub mod listing;
 pub mod paths;
 pub mod route;
 pub mod upload;
+pub mod zip;
 
 use std::io::{BufRead, BufReader, Write};
-use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -30,6 +31,23 @@ pub struct Mount {
     pub dir: PathBuf,
 }
 
+/// What a finished upload looks like to the desktop app.
+pub struct UploadNotice {
+    pub name: String,
+    pub bytes: u64,
+    pub peer: std::net::IpAddr,
+}
+
+pub type UploadHook = Arc<dyn Fn(UploadNotice) + Send + Sync>;
+
+/// Callbacks the desktop app hangs off the server; the server itself stays
+/// Tauri-free.
+#[derive(Clone, Default)]
+pub struct Hooks {
+    pub on_urls_changed: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub on_upload: Option<UploadHook>,
+}
+
 pub struct ServerContext {
     pub log: Option<PathBuf>,
     pub mounts: Vec<Mount>,
@@ -37,6 +55,7 @@ pub struct ServerContext {
     pub limiter: auth::AuthLimiter,
     pub upload: RwLock<UploadConfig>,
     pub upload_limiter: auth::AuthLimiter,
+    pub on_upload: Option<UploadHook>,
 }
 
 pub struct ServerHandle {
@@ -69,6 +88,24 @@ impl std::fmt::Display for StartError {
     }
 }
 
+/// Dual-stack when sharing on the LAN: IPv4 and IPv6 phones both connect, which
+/// matters on IPv6-only hotspots. Falls back to IPv4 if the host has no IPv6.
+fn bind(port: u16, allow_lan: bool) -> std::io::Result<TcpListener> {
+    if allow_lan {
+        match TcpListener::bind((Ipv6Addr::UNSPECIFIED, port)) {
+            Ok(listener) => return Ok(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => return Err(error),
+            Err(_) => {}
+        }
+    }
+    let host = if allow_lan {
+        Ipv4Addr::UNSPECIFIED
+    } else {
+        Ipv4Addr::LOCALHOST
+    };
+    TcpListener::bind((host, port))
+}
+
 impl ServerHandle {
     pub fn start(
         shares: &[PathBuf],
@@ -77,7 +114,7 @@ impl ServerHandle {
         password: Option<String>,
         upload: UploadConfig,
         log: Option<PathBuf>,
-        on_urls_changed: Option<Arc<dyn Fn() + Send + Sync>>,
+        hooks: Option<Hooks>,
     ) -> Result<Self, StartError> {
         let mut mounts = Vec::new();
         for share in shares {
@@ -114,12 +151,7 @@ impl ServerHandle {
             }
         }
 
-        let host = if allow_lan {
-            Ipv4Addr::UNSPECIFIED
-        } else {
-            Ipv4Addr::LOCALHOST
-        };
-        let listener = TcpListener::bind((host, port)).map_err(|error| match error.kind() {
+        let listener = bind(port, allow_lan).map_err(|error| match error.kind() {
             std::io::ErrorKind::AddrInUse => StartError::PortInUse,
             std::io::ErrorKind::PermissionDenied => StartError::PermissionDenied,
             _ => StartError::Io(error.to_string()),
@@ -132,6 +164,10 @@ impl ServerHandle {
             .set_nonblocking(true)
             .map_err(|error| StartError::Io(error.to_string()))?;
 
+        let Hooks {
+            on_urls_changed,
+            on_upload,
+        } = hooks.unwrap_or_default();
         let context = Arc::new(ServerContext {
             log,
             mounts,
@@ -139,6 +175,7 @@ impl ServerHandle {
             limiter: auth::AuthLimiter::default(),
             upload: RwLock::new(upload),
             upload_limiter: auth::AuthLimiter::default(),
+            on_upload,
         });
         let context_for_handle = Arc::clone(&context);
         let shutdown = Arc::new(AtomicBool::new(false));

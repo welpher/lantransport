@@ -111,6 +111,7 @@ let shareQrUrl: string | null = null;
 let selectedUrl: string | null = null;
 let passwordTimer: number | null = null;
 let networkNoteTimer: number | null = null;
+let dropHintTimer: number | null = null;
 let networkNote = false;
 let portTimer: number | null = null;
 let portStatus: "unknown" | "free" | "used" = "unknown";
@@ -206,8 +207,9 @@ function text() {
     folders: t("ui.folders"),
     addFolder: t("ui.add_folder"),
     remove: t("ui.remove"),
-    inbox: t("ui.inbox"),
     foldersHint: t("ui.folders_hint"),
+    dropAdded: t("ui.drop_added"),
+    dropKnown: t("ui.drop_known"),
     tabShare: t("ui.tab_share"),
     tabSettings: t("ui.tab_settings"),
     groupConnection: t("ui.group_connection"),
@@ -256,12 +258,6 @@ function renderFolders(): void {
     full.textContent = path;
     full.title = path;
     row.append(name, full);
-    if (index === 0) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = label.inbox;
-      row.append(badge);
-    }
     const open = document.createElement("button");
     open.className = "icon-btn";
     open.textContent = "↗";
@@ -275,7 +271,7 @@ function renderFolders(): void {
     remove.setAttribute("aria-label", label.remove);
     remove.addEventListener("click", () => {
       draft.shares.splice(index, 1);
-      apply();
+      void persistShares();
     });
     row.append(open, remove);
     return row;
@@ -310,7 +306,7 @@ function apply(): void {
   elements.settingsLocked.textContent = label.settingsLocked;
   elements.settingsLocked.hidden = !running;
   elements.foldersLabel.textContent = label.folders;
-  elements.foldersHint.textContent = label.foldersHint;
+  if (dropHintTimer === null) elements.foldersHint.textContent = label.foldersHint;
   elements.addFolder.textContent = label.addFolder;
   elements.portLabel.textContent = label.port;
   elements.portState.textContent =
@@ -541,6 +537,17 @@ function applyTheme(theme: string): void {
   })();
 }
 
+async function persistShares(): Promise<void> {
+  try {
+    snapshot = await invoke<Snapshot>("update_prefs", { shares: [...draft.shares] });
+    draft.shares = [...snapshot.settings.shares];
+    localError = null;
+  } catch (error) {
+    localError = String(error);
+  }
+  apply();
+}
+
 async function updatePrefs(patch: Record<string, unknown>): Promise<void> {
   try {
     snapshot = await invoke<Snapshot>("update_prefs", patch);
@@ -561,7 +568,7 @@ async function addFolder(): Promise<void> {
   if (typeof selected === "string" && !draft.shares.includes(selected)) {
     draft.shares.push(selected);
     localError = null;
-    apply();
+    void persistShares();
   }
 }
 
@@ -642,12 +649,33 @@ async function boot(): Promise<void> {
   apply();
   void checkPort();
 
+  await listen<[number, number]>("drop-result", (event) => {
+    const [added, known] = event.payload;
+    const label = text();
+    elements.foldersHint.textContent =
+      added > 0 ? label.dropAdded : known > 0 ? label.dropKnown : label.dropKnown;
+    if (dropHintTimer !== null) window.clearTimeout(dropHintTimer);
+    dropHintTimer = window.setTimeout(() => {
+      dropHintTimer = null;
+      apply();
+    }, 4000);
+  });
+
   await listen<Snapshot>("snapshot", (event) => {
     const previous = snapshot;
     const wasRunning = previous?.running ?? false;
+    const previousShares = JSON.stringify(previous?.settings.shares ?? []);
     snapshot = event.payload;
     if (wasRunning !== snapshot.running) {
       syncInputs();
+    } else if (
+      previousShares !== JSON.stringify(snapshot.settings.shares) &&
+      // Only adopt the external list when the fields on screen have no edits of
+      // their own; a folder dropped on the window must not wipe a half-typed key.
+      JSON.stringify(draft.shares) === previousShares
+    ) {
+      draft.shares = [...snapshot.settings.shares];
+      renderFolders();
     }
     const urlsChanged =
       wasRunning && JSON.stringify(previous?.urls ?? []) !== JSON.stringify(snapshot.urls);

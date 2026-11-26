@@ -68,6 +68,16 @@ body {
   gap: 16px;
   overflow: hidden;
 }
+.app::-webkit-scrollbar { width: 11px; height: 11px; }
+.app::-webkit-scrollbar-track, .app::-webkit-scrollbar-corner { background: transparent; }
+.app::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 45%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+/* Header and tabs stay put while the rest scrolls. */
+
 .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .header, .footer { flex: 0 0 auto; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -118,11 +128,24 @@ main.stack > .tabbar { flex: 0 0 auto; }
 .panel {
   flex: 1 1 auto;
   min-height: 0;
+  /* Only when needed: the share tab usually fits, and a permanent bar just
+     stole 11px from the right edge of the cards. Thin and quiet when it does
+     appear. */
   overflow-y: auto;
-  /* Reserve the scrollbar so switching tabs or adding a folder does not
-     shift the cards sideways when the scrollbar appears. */
-  scrollbar-gutter: stable;
-  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) color-mix(in srgb, var(--muted) 12%, transparent);
+}
+.panel::-webkit-scrollbar { width: 11px; height: 11px; }
+.panel::-webkit-scrollbar-track,
+.panel::-webkit-scrollbar-corner {
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  border-radius: 999px;
+}
+.panel::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--muted) 50%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 .tabbar {
   display: flex;
