@@ -24,6 +24,9 @@ files to the public internet.
   folder and must stay inside that folder. Hidden entries (`dotfiles`) are never listed or
   served, and upload file names are sanitized. Symlinks pointing outside the root
   are refused.
+- **No TLS**: the page is served over plain HTTP on the LAN. The browsing
+  password and the upload key are therefore readable by anyone who can sniff the
+  network. That is fine on a network you control and a bad idea on public Wi-Fi.
 - **Writes** are limited to uploads into the shared folder the visitor is
   browsing (older pages that send no target still write into the first folder's
   `uploads/`): no delete, rename or overwrite. Uploads are
