@@ -33,8 +33,9 @@ pub fn handle(request: &Request, ctx: &ServerContext, peer: IpAddr) -> Response 
         return simple(400, locale);
     }
 
-    if decoded == "/favicon.ico" {
-        return Response::empty(204);
+    if decoded == "/icon.png" || decoded == "/favicon.ico" {
+        return Response::bytes(200, "image/png", app_icon().to_vec())
+            .header("Cache-Control", "public, max-age=86400");
     }
 
     {
@@ -189,7 +190,7 @@ fn serve_listing(
         .header(
             "Content-Security-Policy",
             format!(
-                "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+                "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
             ),
         )
         .header("Referrer-Policy", "no-referrer")
@@ -347,4 +348,9 @@ fn nonce() -> String {
             .map_or(0, |duration| duration.as_nanos()),
     );
     format!("{:x}{:x}", first.finish(), second.finish())
+}
+
+/// The desktop icon, so the share page and the app show the same mark.
+fn app_icon() -> &'static [u8] {
+    include_bytes!("../../../public/icon.png")
 }

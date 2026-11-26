@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light dark;
   --bg: #f5f7fa;
   --card: #ffffff;
   --text: #101828;
@@ -37,17 +38,22 @@ body {
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+  /* The window never scrolls; the panel under the tabs does. */
+  overflow: hidden;
 }
 .app {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   max-width: 820px;
   margin: 0 auto;
   padding: 20px 24px 22px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow: hidden;
 }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.header, .footer { flex: 0 0 auto; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .logo { width: 46px; height: 46px; border-radius: 12px; box-shadow: var(--shadow); }
 h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
@@ -79,6 +85,17 @@ select {
   cursor: pointer;
 }
 .stack { display: flex; flex-direction: column; gap: 14px; }
+main.stack { flex: 1 1 auto; min-height: 0; }
+main.stack > .tabbar { flex: 0 0 auto; }
+.panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Reserve the scrollbar so switching tabs or adding a folder does not
+     shift the cards sideways when the scrollbar appears. */
+  scrollbar-gutter: stable;
+  padding-right: 2px;
+}
 .tabbar {
   display: flex;
   align-items: center;

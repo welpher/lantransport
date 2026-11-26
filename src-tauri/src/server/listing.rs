@@ -293,12 +293,13 @@ pub fn render(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
+<link rel="icon" href="/icon.png" type="image/png">
 <title>{title} · LanTransport</title>
 <style>{STYLE}{UPLOAD_CSS}</style>
 <div class="wrap">
   <div class="top">
     <a class="brand" href="/">
-      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h4.2l2 2h6.8A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-11z"/></svg>
+      <img class="brand-mark" src="/icon.png" alt="" width="40" height="40" draggable="false">
       LanTransport
     </a>
     <div class="top-actions">{upload_button}<select id="lang" aria-label="{lang_label}">{lang_options}</select></div>
@@ -462,6 +463,10 @@ pub const STYLE: &str = r#"
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+/* Always reserve the scrollbar: filtering or navigating must not shift the
+   layout sideways when a scrollbar appears. `scrollbar-gutter: stable` alone
+   does not reserve space while the page is short in Chrome, so force it. */
+html { overflow-y: scroll; scrollbar-gutter: stable; }
 body {
   margin: 0;
   padding: 24px 16px 48px;
@@ -471,7 +476,7 @@ body {
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 .wrap { max-width: 960px; margin: 0 auto; }
-h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; word-break: break-all; }
+h1 { font-size: 19px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.01em; word-break: break-all; }
 .meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
 .crumbs { font-size: 14px; margin-bottom: 14px; word-break: break-all; }
 .crumbs a { color: var(--accent); text-decoration: none; }
@@ -599,20 +604,34 @@ tbody tr:hover { background: var(--row-hover); }
 
 
 /* header, brand, upload dialog */
-.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   color: var(--text);
   text-decoration: none;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 650;
   letter-spacing: -0.01em;
   opacity: 1;
 }
-.brand:hover { opacity: 1; text-decoration: none; }
-.brand-mark { width: 20px; height: 20px; flex: 0 0 auto; color: var(--accent); }
+.brand:hover { opacity: .85; text-decoration: none; }
+.brand-mark { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; }
+@media (max-width: 620px) {
+  .top { padding-bottom: 12px; margin-bottom: 14px; }
+  .brand { font-size: 15px; }
+  .brand-mark { width: 32px; height: 32px; border-radius: 8px; }
+  h1 { font-size: 17.5px; }
+}
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .top-actions select {
   appearance: none;

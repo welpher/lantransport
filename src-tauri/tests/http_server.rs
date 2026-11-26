@@ -631,3 +631,27 @@ fn accepts_uploads_larger_than_the_socket_buffer() {
         8 * 1024 * 1024
     );
 }
+
+#[test]
+fn share_page_uses_the_app_icon() {
+    let root = temp_root("icon");
+    let server = start(&root, None);
+
+    let page = get(server.port, "/");
+    assert_eq!(page.status, 200);
+    let html = page.text();
+    assert!(
+        html.contains("src=\"/icon.png\""),
+        "page references the icon"
+    );
+    assert!(html.contains("<link rel=\"icon\" href=\"/icon.png\""));
+
+    let icon = get(server.port, "/icon.png");
+    assert_eq!(icon.status, 200);
+    assert_eq!(icon.header("content-type"), Some("image/png"));
+    assert!(icon.body.starts_with(&[0x89, b'P', b'N', b'G']));
+
+    let favicon = get(server.port, "/favicon.ico");
+    assert_eq!(favicon.status, 200);
+    assert_eq!(favicon.header("content-type"), Some("image/png"));
+}
