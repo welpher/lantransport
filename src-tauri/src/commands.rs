@@ -112,6 +112,42 @@ pub fn start_from_settings(app: &AppHandle) -> Result<Snapshot, String> {
     }
 }
 
+/// Opens a folder in the system file manager and brings it to the front.
+/// `/usr/bin/open` alone can leave Finder behind while the app runs as an
+/// accessory (tray) app, so macOS names Finder explicitly.
+pub fn open_folder(path: &std::path::Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    let spawned = std::process::Command::new("/usr/bin/open")
+        .arg("-a")
+        .arg("Finder")
+        .arg(path)
+        .spawn()
+        .is_ok();
+    #[cfg(target_os = "windows")]
+    let spawned = std::process::Command::new("explorer")
+        .arg(path)
+        .spawn()
+        .is_ok();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let spawned = std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .is_ok();
+    spawned
+}
+
+#[tauri::command]
+pub fn open_folder_command(path: String) -> Result<(), String> {
+    if open_folder(std::path::Path::new(&path)) {
+        Ok(())
+    } else {
+        Err("not a folder".into())
+    }
+}
+
 pub(crate) fn append_log(app: &AppHandle, message: &str) {
     if let Ok(dir) = app.path().app_log_dir() {
         let _ = std::fs::create_dir_all(&dir);

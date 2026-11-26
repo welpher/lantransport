@@ -2,7 +2,6 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
-use tauri_plugin_opener::OpenerExt;
 
 use crate::commands;
 use crate::server::i18n;
@@ -110,7 +109,7 @@ fn open_logs(app: &AppHandle) {
         return;
     };
     let _ = std::fs::create_dir_all(&dir);
-    let _ = app.opener().reveal_item_in_dir(&dir);
+    commands::open_folder(&dir);
 }
 
 fn copy_link(app: &AppHandle) {
