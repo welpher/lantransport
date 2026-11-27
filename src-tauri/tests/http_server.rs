@@ -382,21 +382,27 @@ fn folder_upload_rejects_paths_that_escape() {
 #[test]
 fn folder_upload_does_not_follow_symlinks_out_of_the_share() {
     let (root, server) = upload_server("folder-link");
-    let outside = std::env::temp_dir().join(format!(
-        "lantransport-folder-link-outside-{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&outside);
-    std::fs::create_dir_all(&outside).unwrap();
-    std::fs::create_dir_all(root.join("uploads")).unwrap();
+    // A nested upload without a link works first, so the rejection below is
+    // about the link and not about the setup.
+    assert_eq!(
+        put(server.port, "path=plain%2Fok.txt", Some("k3y"), "x").status,
+        201
+    );
+    assert!(root.join("uploads/plain/ok.txt").is_file());
     #[cfg(unix)]
     {
+        let outside = std::env::temp_dir().join(format!(
+            "lantransport-folder-link-outside-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
         std::os::unix::fs::symlink(&outside, root.join("uploads/link")).unwrap();
         let reply = put(server.port, "path=link%2Fescape.txt", Some("k3y"), "x");
         assert_eq!(reply.status, 400);
         assert!(!outside.join("escape.txt").exists());
+        let _ = std::fs::remove_dir_all(&outside);
     }
-    let _ = std::fs::remove_dir_all(&outside);
 }
 
 #[test]
