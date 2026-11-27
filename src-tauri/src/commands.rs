@@ -150,19 +150,15 @@ pub fn open_folder_command(path: String) -> Result<(), String> {
 
 pub(crate) fn append_log(app: &AppHandle, message: &str) {
     if let Ok(dir) = app.path().app_log_dir() {
-        let _ = std::fs::create_dir_all(&dir);
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join("lantransport.log"))
-        {
-            use std::io::Write;
-            let _ = writeln!(
-                file,
-                "{} {message}",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-            );
-        }
+        let line = format!(
+            "{} {message}\n",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        );
+        crate::server::append_line(
+            &dir.join("lantransport.log"),
+            &line,
+            crate::server::LOG_LIMIT,
+        );
     }
 }
 
