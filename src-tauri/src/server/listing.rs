@@ -348,7 +348,7 @@ pub fn render(
       <option value="time:desc">{modified} ↓</option>
     </select>
     <button class="btn" id="select-mode" type="button">{select_label}</button>
-    <button class="btn icon-btn" id="refresh" type="button" title="{refresh_label}" aria-label="{refresh_label}">&#8635;</button>
+    <button class="btn icon-btn" id="refresh" type="button" title="{refresh_label}" aria-label="{refresh_label}"><span class="spin">&#8635;</span></button>
   </div>
   <div class="selectbar" id="selectbar" hidden>
     <label class="pick-all"><input type="checkbox" id="pick-all"><span>{select_all}</span></label>
@@ -921,7 +921,11 @@ tbody tr:hover { background: var(--row-hover); }
 }
 .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1; }
-.icon-btn.busy { animation: spin .9s linear infinite; pointer-events: none; opacity: .6; }
+/* Only the glyph spins: animating the button itself rotated its border and
+   background on every engine, which read as the whole control turning. */
+.icon-btn.busy { pointer-events: none; opacity: .6; }
+.icon-btn .spin { display: inline-block; }
+.icon-btn.busy .spin { animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .top-actions select,
 .sort-select {
