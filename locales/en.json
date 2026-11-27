@@ -55,6 +55,7 @@
   "upload.failed": "Some uploads failed",
   "upload.done": "Uploaded. Refreshing…",
   "upload.key": "Upload key",
+  "upload.note_title": "About uploading",
   "upload.uploading": "Uploading",
   "error.400": "Malformed request.",
   "error.403": "Cannot read folder.",

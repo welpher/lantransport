@@ -55,6 +55,7 @@
   "upload.failed": "有文件上传失败",
   "upload.done": "上传完成，正在刷新…",
   "upload.key": "上传 key",
+  "upload.note_title": "上传说明",
   "upload.uploading": "上传中",
   "error.400": "请求格式不正确。",
   "error.403": "无法读取目录。",
