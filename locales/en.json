@@ -57,6 +57,7 @@
   "upload.done": "Uploaded. Refreshing…",
   "upload.limit": "Only the first {n} files of that folder were sent.",
   "upload.key": "Upload key",
+  "upload.note_title": "About uploading",
   "upload.uploading": "Uploading",
   "error.400": "Malformed request.",
   "error.403": "Cannot read folder.",

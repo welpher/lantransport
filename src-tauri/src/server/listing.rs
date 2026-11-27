@@ -223,8 +223,11 @@ pub fn render(
         <button class="clear-btn" id="up-clear" type="button" aria-label="{clear}" title="{clear}" hidden>×</button>
       </div>
     </div>
-    <p class="key-hint hint">{key_hint}</p>
-    <p class="key-hint hint key-drop">{key_drop_hint}</p>
+    <div class="note" role="note">
+      <strong class="note-title">{note_title}</strong>
+      <p>{key_hint}</p>
+      <p>{key_drop_hint}</p>
+    </div>
     <div class="up-area" id="up-area" hidden>
       <div class="drop" id="up-drop">
         <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/><path d="M12 11v5"/><path d="M9.8 13.8 12 16l2.2-2.2"/></svg></span>
@@ -253,6 +256,7 @@ pub fn render(
             choose = escape_html(&t("upload.choose")),
             choose_dir = escape_html(&t("upload.choose_dir")),
             key = escape_html(&t("upload.key")),
+            note_title = escape_html(&t("upload.note_title")),
             key_hint = escape_html(&t("upload.key_hint")),
             key_drop_hint = escape_html(&t("upload.key_drop_hint")),
             retry = escape_html(&t("upload.retry")),
@@ -1117,22 +1121,36 @@ const UPLOAD_CSS: &str = r#"
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
 .drop.over .drop-icon { transform: translateY(-2px) scale(1.06); }
 .keyrow { display: flex; gap: 8px; }
-.key-hint { margin: 0; line-height: 1.5; }
-.key-drop {
+/* An info box around the two hint lines, so they read as one block of help
+   instead of two loose paragraphs under the key field. */
+.note {
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 2px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--card));
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
-.key-drop::before {
+.note p { margin: 0; }
+.note-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+  font-size: 12px;
+  font-weight: 600;
+}
+.note-title::before {
   content: "";
   flex: 0 0 auto;
   width: 13px;
   height: 13px;
-  margin-top: 3px;
   background: currentColor;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4'/%3E%3Cpath d='m7.5 8.5 4.5-4.5 4.5 4.5'/%3E%3Cpath d='M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'/%3E%3C/svg%3E") center / contain no-repeat;
-  opacity: .7;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .keyfield { position: relative; flex: 1; min-width: 0; }
 .keyfield input { width: 100%; padding-right: 34px; }
