@@ -244,6 +244,7 @@ pub fn render(
       </div>
       <div class="up-status hint" id="up-status"></div>
       <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
+      <button class="btn ghost" id="up-cancel" type="button" hidden>{cancel}</button>
       <button class="btn ghost" id="up-retry" type="button" hidden>{retry}</button>
     </div>
   </div>
@@ -260,6 +261,7 @@ pub fn render(
             key_hint = escape_html(&t("upload.key_hint")),
             key_drop_hint = escape_html(&t("upload.key_drop_hint")),
             retry = escape_html(&t("upload.retry")),
+            cancel = escape_html(&t("upload.cancel")),
             clear = escape_html(&t("upload.clear")),
             dropping = escape_html(&t("upload.dropping")),
         )
@@ -274,13 +276,15 @@ pub fn render(
     );
 
     let upload_strings = format!(
-        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {}, limit: {} }};\nconst UP_RETRIES = 3;",
+        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {}, limit: {}, cancelling: {}, cancelled: {} }};\nconst UP_RETRIES = 3;",
         js_string(&t("upload.need_key")),
         js_string(&t("upload.failed")),
         js_string(&t("upload.done")),
         js_string(&t("upload.uploading")),
         js_string(&t("upload.retrying")),
         js_string(&t("upload.limit")),
+        js_string(&t("upload.cancelling")),
+        js_string(&t("upload.cancelled")),
     );
 
     let lang_options: String = i18n::LANGUAGES
@@ -1167,6 +1171,7 @@ const UPLOAD_CSS: &str = r#"
 }
 .keyrow input:focus { border-color: var(--accent); }
 .up-status { min-height: 18px; }
+#up-cancel, #up-retry { align-self: flex-start; }
 
 @media (max-width: 620px) {
   .keyrow input { font-size: 16px; }
@@ -1191,7 +1196,11 @@ const UPLOAD_JS: &str = r#"
   const keyInput = document.getElementById('up-key');
   const status = document.getElementById('up-status');
   const retryBtn = document.getElementById('up-retry');
+  const cancelBtn = document.getElementById('up-cancel');
   let retryItems = [];
+  let active = null;
+  let cancelled = false;
+  let uploading = false;
   const progress = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar');
   const storeKey = 'lantransport-upload-key';
@@ -1228,6 +1237,8 @@ const UPLOAD_JS: &str = r#"
     bar.style.width = '0%';
     retryBtn.hidden = true;
     retryItems = [];
+    cancelled = false;
+    cancelBtn.hidden = true;
   };
 
   const openModal = () => {
@@ -1427,6 +1438,16 @@ const UPLOAD_JS: &str = r#"
     return items.every(item => item.path.split('/')[0] === top) ? top : '';
   }
 
+  async function startBatch(batch, label, count, total, key) {
+    const url = '/upload?start=1&batch=' + batch + '&count=' + count + '&total=' + total
+      + (label ? '&blabel=' + encodeURIComponent(label) : '');
+    try {
+      await fetch(url, { method: 'PUT', headers: { 'X-Upload-Key': key } });
+    } catch (error) {
+      // Only the summary for the app is missing; the upload goes on.
+    }
+  }
+
   async function endBatch(batch, label, key) {
     const url = '/upload?end=1&batch=' + batch + (label ? '&blabel=' + encodeURIComponent(label) : '');
     try {
@@ -1475,13 +1496,16 @@ const UPLOAD_JS: &str = r#"
       xhr.upload.onprogress = event => {
         if (event.lengthComputable) onProgress(offset + event.loaded);
       };
+      active = xhr;
       xhr.onload = () => {
+        active = null;
         if (xhr.status >= 200 && xhr.status < 300) return resolve();
         let message = '';
         try { message = JSON.parse(xhr.responseText).message || ''; } catch (e) {}
         reject(new Error(message || ('HTTP ' + xhr.status)));
       };
-      xhr.onerror = () => reject(new Error('network'));
+      xhr.onerror = () => { active = null; reject(new Error('network')); };
+      xhr.onabort = () => { active = null; reject(new Error('cancelled')); };
       xhr.send(offset > 0 ? file.slice(offset) : file);
     });
   }
@@ -1512,7 +1536,12 @@ const UPLOAD_JS: &str = r#"
       bar.style.width = percent + '%';
     };
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    for (let index = 0; index < items.length; index++) {
+    const label = batch ? batchLabel(items) : '';
+    cancelled = false;
+    uploading = true;
+    if (batch) await startBatch(batch, label, items.length, total, key);
+    cancelBtn.hidden = false;
+    for (let index = 0; index < items.length && !cancelled; index++) {
       report(index, 0);
       let attempt = 0;
       while (true) {
@@ -1521,14 +1550,16 @@ const UPLOAD_JS: &str = r#"
           sent += items[index].file.size;
           break;
         } catch (error) {
-          // The next attempt asks the server how much arrived and continues
-          // from there, so a flaky Wi-Fi blip usually repairs itself.
+          if (cancelled) break;
+          // The next attempt asks how much arrived and continues from there, so
+          // a flaky Wi-Fi blip usually repairs itself.
           attempt++;
           if (attempt <= UP_RETRIES) {
             status.textContent = UP_MSG.retrying
               .replace('{n}', String(attempt))
               .replace('{total}', String(UP_RETRIES));
             await sleep(attempt === 1 ? 1000 : 3000);
+            if (cancelled) break;
             continue;
           }
           failed++;
@@ -1539,8 +1570,21 @@ const UPLOAD_JS: &str = r#"
         }
       }
     }
-    for (const dir of folders) await makeFolder(dir, key);
-    if (batch) await endBatch(batch, batchLabel(items), key);
+    cancelBtn.hidden = true;
+    uploading = false;
+    if (!cancelled) for (const dir of folders) await makeFolder(dir, key);
+    if (batch) await endBatch(batch, label, key);
+    if (cancelled) {
+      progress.hidden = true;
+      bar.style.width = '0%';
+      status.textContent = UP_MSG.cancelled;
+      progress.classList.remove('done');
+      status.classList.remove('done');
+      retryBtn.hidden = true;
+      // Whatever arrived is already on disk; show it.
+      setTimeout(() => { void refreshListing(); }, 300);
+      return;
+    }
     if (failed) {
       progress.hidden = true;
       bar.style.width = '0%';
@@ -1567,6 +1611,15 @@ const UPLOAD_JS: &str = r#"
       setTimeout(() => { closeModal(); }, 1300);
     }
   }
+
+  cancelBtn.addEventListener('click', () => {
+    // The last file may have finished between the click and this handler.
+    if (!uploading) return;
+    cancelled = true;
+    cancelBtn.hidden = true;
+    status.textContent = UP_MSG.cancelling;
+    if (active) active.abort();
+  });
 
   retryBtn.addEventListener('click', () => {
     // Folders are already in place by the time a file fails, so only the failed

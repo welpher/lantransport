@@ -436,9 +436,12 @@ fn a_batch_is_one_notice_per_file_and_one_end() {
     let root = temp_root("batch");
     let seen: Seen = Arc::new(Mutex::new(Vec::new()));
     let ended: Seen = Arc::new(Mutex::new(Vec::new()));
+    type Started = Arc<Mutex<Vec<(String, u32, u64, bool)>>>;
+    let started: Started = Arc::new(Mutex::new(Vec::new()));
     {
         let seen_hook = Arc::clone(&seen);
         let ended_hook = Arc::clone(&ended);
+        let started_hook = Arc::clone(&started);
         let server = ServerHandle::start(
             std::slice::from_ref(&root),
             0,
@@ -455,12 +458,32 @@ fn a_batch_is_one_notice_per_file_and_one_end() {
                 on_upload: Some(Arc::new(move |notice| {
                     seen_hook.lock().unwrap().push((notice.name, notice.batch));
                 })),
-                on_batch_end: Some(Arc::new(move |end| {
-                    ended_hook.lock().unwrap().push((end.id, end.label));
+                on_batch_end: Some(Arc::new(move |event| {
+                    if event.done {
+                        ended_hook.lock().unwrap().push((event.id, event.label));
+                    } else {
+                        started_hook.lock().unwrap().push((
+                            event.id,
+                            event.count,
+                            event.total,
+                            event.done,
+                        ));
+                    }
                 })),
             }),
         )
         .expect("server starts");
+
+        let start = send(
+            server.port,
+            "PUT /upload?start=1&batch=b1&blabel=trip&count=2&total=6 HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        assert_eq!(start.status, 204);
+        assert_eq!(
+            *started.lock().unwrap(),
+            vec![("b1".to_string(), 2, 6, false)],
+            "the page says how much it is about to send"
+        );
 
         put(
             server.port,

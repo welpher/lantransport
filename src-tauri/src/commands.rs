@@ -152,6 +152,39 @@ fn accumulate(batch: &mut crate::state::PendingBatch, notice: &crate::server::Up
     });
 }
 
+/// The folder name a batch row shows: what the page called it, or the folder the
+/// files landed in (a multi-file pick has no folder of its own).
+fn batch_name(batch: &crate::state::PendingBatch) -> String {
+    if let Some(label) = batch.label.as_deref().filter(|value| !value.is_empty()) {
+        return label.to_string();
+    }
+    batch
+        .dir
+        .as_deref()
+        .and_then(|dir| Path::new(dir).file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn show_notification(app: &AppHandle, body: String) {
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title("LanTransport")
+        .body(body)
+        .show()
+    {
+        append_log(app, &format!("upload notification failed: {error}"));
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -280,9 +313,49 @@ fn start_server(
     let on_upload: crate::server::UploadHook = Arc::new(move |notice| {
         let state = upload_app.state::<AppState>();
         let now = unix_now();
-        if let Some(id) = notice.batch.clone() {
-            // Part of a drop: nothing is shown until the page closes the batch,
-            // so a 300-file folder does not become 300 rows and 300 toasts.
+        let Some(id) = notice.batch.clone() else {
+            // A single file: one row, one notification, as before.
+            {
+                let mut recent = state
+                    .recent
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                recent.push_front(crate::state::RecentUpload {
+                    name: notice.name.clone(),
+                    bytes: notice.bytes,
+                    peer: notice.peer.to_string(),
+                    dir: notice.dir.to_string_lossy().into_owned(),
+                    at: now,
+                    files: 1,
+                    batch: None,
+                });
+                while recent.len() > crate::state::RECENT_LIMIT {
+                    recent.pop_back();
+                }
+            }
+            notify(&upload_app);
+            let locale = state.ui_locale();
+            let body = i18n::t_args(
+                &locale,
+                "notify.uploaded",
+                &[
+                    ("name", notice.name.clone()),
+                    ("size", crate::server::listing::human_size(notice.bytes)),
+                    ("peer", notice.peer.to_string()),
+                ],
+            );
+            show_notification(&upload_app, body);
+            append_log(
+                &upload_app,
+                &format!("uploaded {} from {}", notice.name, notice.peer),
+            );
+            return;
+        };
+
+        // Part of a drop: the first file opens one row and one notification, the
+        // rest only make that row grow. A 1900-file folder therefore shows up
+        // straight away instead of at the very end.
+        let (first, name, files, bytes, emit) = {
             let mut batches = state
                 .batches
                 .lock()
@@ -291,65 +364,125 @@ fn start_server(
             // minutes of silence is enough to forget it.
             batches.retain(|_, batch| now.saturating_sub(batch.started) < 600);
             let batch = batches
-                .entry(id)
+                .entry(id.clone())
                 .or_insert_with(|| crate::state::PendingBatch {
                     started: now,
                     ..Default::default()
                 });
+            let first = !batch.row;
             accumulate(batch, &notice);
-            return;
-        }
-        {
+            let name = batch_name(batch);
+            let emit = first || now_ms().saturating_sub(batch.last_emit) >= 300;
+            if emit {
+                batch.last_emit = now_ms();
+            }
+            (first, name, batch.files, batch.bytes, emit)
+        };
+        if emit {
             let mut recent = state
                 .recent
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            recent.push_front(crate::state::RecentUpload {
-                name: notice.name.clone(),
-                bytes: notice.bytes,
-                peer: notice.peer.to_string(),
-                dir: notice.dir.to_string_lossy().into_owned(),
-                at: now,
-                files: 1,
-            });
-            while recent.len() > crate::state::RECENT_LIMIT {
-                recent.pop_back();
+            if first {
+                recent.push_front(crate::state::RecentUpload {
+                    name: name.clone(),
+                    bytes,
+                    peer: notice.peer.to_string(),
+                    dir: notice.dir.to_string_lossy().into_owned(),
+                    at: now,
+                    files,
+                    batch: Some(id.clone()),
+                });
+                while recent.len() > crate::state::RECENT_LIMIT {
+                    recent.pop_back();
+                }
+            } else if let Some(row) = recent
+                .iter_mut()
+                .find(|row| row.batch.as_deref() == Some(id.as_str()))
+            {
+                row.files = files;
+                row.bytes = bytes;
             }
+            drop(recent);
+            notify(&upload_app);
         }
-        notify(&upload_app);
-        let locale = state.ui_locale();
-        let body = i18n::t_args(
-            &locale,
-            "notify.uploaded",
-            &[
-                ("name", notice.name.clone()),
-                ("size", crate::server::listing::human_size(notice.bytes)),
-                ("peer", notice.peer.to_string()),
-            ],
-        );
-        if let Err(error) = upload_app
-            .notification()
-            .builder()
-            .title("LanTransport")
-            .body(body)
-            .show()
-        {
-            append_log(&upload_app, &format!("upload notification failed: {error}"));
+        if first {
+            let (expected_files, expected_bytes) = {
+                let batches = state
+                    .batches
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                batches
+                    .get(&id)
+                    .map(|batch| (batch.expected_files, batch.expected_bytes))
+                    .unwrap_or((0, 0))
+            };
+            let shown_files = if expected_files > 0 {
+                expected_files
+            } else {
+                files
+            };
+            let shown_bytes = if expected_bytes > 0 {
+                expected_bytes
+            } else {
+                bytes
+            };
+            let locale = state.ui_locale();
+            let size = crate::server::listing::human_size(shown_bytes);
+            let count = shown_files.to_string();
+            let body = if name.is_empty() {
+                i18n::t_args(
+                    &locale,
+                    "notify.receiving_many",
+                    &[
+                        ("files", count),
+                        ("size", size),
+                        ("peer", notice.peer.to_string()),
+                    ],
+                )
+            } else {
+                i18n::t_args(
+                    &locale,
+                    "notify.receiving_folder",
+                    &[
+                        ("name", name.clone()),
+                        ("files", count),
+                        ("size", size),
+                        ("peer", notice.peer.to_string()),
+                    ],
+                )
+            };
+            show_notification(&upload_app, body);
         }
-        append_log(
-            &upload_app,
-            &format!("uploaded {} from {}", notice.name, notice.peer),
-        );
     });
 
     let batch_app = app.clone();
-    let on_batch_end: crate::server::BatchHook = Arc::new(move |end| {
+    let on_batch_end: crate::server::BatchHook = Arc::new(move |event| {
         let state = batch_app.state::<AppState>();
+        if !event.done {
+            // The page said how much it is about to send; keep that for the
+            // first notification.
+            let mut batches = state
+                .batches
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let batch =
+                batches
+                    .entry(event.id.clone())
+                    .or_insert_with(|| crate::state::PendingBatch {
+                        started: unix_now(),
+                        ..Default::default()
+                    });
+            batch.label = event.label.clone().or(batch.label.take());
+            batch.expected_files = event.count;
+            batch.expected_bytes = event.total;
+            return;
+        }
         let pending = state
             .batches
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .remove(&end.id);
+            .remove(&event.id);
         // Nothing arrived for this batch, so there is nothing to report.
         let Some(pending) = pending else {
             return;
@@ -357,65 +490,32 @@ fn start_server(
         if pending.files == 0 {
             return;
         }
-        let name = end.label.clone().unwrap_or_default();
-        let dir = pending.dir.clone().unwrap_or_default();
+        let mut recent = state
+            .recent
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(row) = recent
+            .iter_mut()
+            .find(|row| row.batch.as_deref() == Some(event.id.as_str()))
         {
-            let mut recent = state
-                .recent
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            recent.push_front(crate::state::RecentUpload {
-                name: name.clone(),
-                bytes: pending.bytes,
-                peer: pending.peer.clone(),
-                dir: dir.clone(),
-                at: unix_now(),
-                files: pending.files,
-            });
-            while recent.len() > crate::state::RECENT_LIMIT {
-                recent.pop_back();
+            row.files = pending.files;
+            row.bytes = pending.bytes;
+            // The files may have spread over subfolders; open their shared root.
+            if let Some(dir) = pending.dir.as_deref() {
+                row.dir = dir.to_string();
             }
         }
+        drop(recent);
         notify(&batch_app);
-        let locale = state.ui_locale();
-        let size = crate::server::listing::human_size(pending.bytes);
-        let files = pending.files.to_string();
-        let body = if name.is_empty() {
-            i18n::t_args(
-                &locale,
-                "notify.uploaded_many",
-                &[
-                    ("files", files.clone()),
-                    ("size", size.clone()),
-                    ("peer", pending.peer.clone()),
-                ],
-            )
-        } else {
-            i18n::t_args(
-                &locale,
-                "notify.uploaded_folder",
-                &[
-                    ("name", name.clone()),
-                    ("files", files.clone()),
-                    ("size", size.clone()),
-                    ("peer", pending.peer.clone()),
-                ],
-            )
-        };
-        if let Err(error) = batch_app
-            .notification()
-            .builder()
-            .title("LanTransport")
-            .body(body)
-            .show()
-        {
-            append_log(&batch_app, &format!("upload notification failed: {error}"));
-        }
         append_log(
             &batch_app,
             &format!(
-                "uploaded folder={name:?} files={} bytes={} dir={dir} from {}",
-                pending.files, pending.bytes, pending.peer
+                "uploaded folder={:?} files={} bytes={} dir={} from {}",
+                pending.label,
+                pending.files,
+                pending.bytes,
+                pending.dir.unwrap_or_default(),
+                pending.peer
             ),
         );
     });
@@ -689,7 +789,7 @@ pub fn update_password(
 
 #[cfg(test)]
 mod share_tests {
-    use super::{accumulate, common_ancestor, nearest_folder, normalize_shares};
+    use super::{accumulate, batch_name, common_ancestor, nearest_folder, normalize_shares};
 
     /// Paths come out with the platform separator, so compare folders the way
     /// std does instead of comparing strings.
@@ -701,6 +801,21 @@ mod share_tests {
     fn shares_are_trimmed_and_deduplicated() {
         let out = normalize_shares(vec![" /a ".into(), String::new(), "/a".into(), "/b".into()]);
         assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]);
+    }
+
+    #[test]
+    fn a_batch_is_named_after_its_folder() {
+        let mut batch = crate::state::PendingBatch {
+            dir: Some("/s/trip".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            batch_name(&batch),
+            "trip",
+            "falls back to the folder it landed in"
+        );
+        batch.label = Some("holiday".to_string());
+        assert_eq!(batch_name(&batch), "holiday", "the page's name wins");
     }
 
     #[test]

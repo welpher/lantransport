@@ -170,11 +170,18 @@ pub fn handle<R: BufRead>(
     let (_, raw_query) = split_target(&request.target);
     let query = query_pairs(raw_query);
 
-    // A page that sends a whole folder marks every file with a batch id and then
-    // closes the batch with `end=1`, so the app can show one entry and one
-    // notification instead of one per file.
+    // A page that sends a whole folder marks every file with a batch id, says
+    // `start=1` before the first one and `end=1` after the last, so the app can
+    // open one row as soon as bytes arrive and close it when the drop is done.
     let batch = batch_id(&query);
-    if query_param(&request.target, "end").is_some_and(|value| value == "1") {
+    let phase = if query_param(&request.target, "end").is_some_and(|value| value == "1") {
+        Some(true)
+    } else if query_param(&request.target, "start").is_some_and(|value| value == "1") {
+        Some(false)
+    } else {
+        None
+    };
+    if let Some(done) = phase {
         let Some(id) = batch else {
             return (fail(400, locale, "upload.err.bad_name"), false);
         };
@@ -183,12 +190,28 @@ pub fn handle<R: BufRead>(
             .find(|(key, _)| key == "blabel")
             .map(|(_, value)| value.as_str())
             .and_then(safe_file_name);
+        let count = query_param(&request.target, "count")
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(0);
+        let total = query_param(&request.target, "total")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        let stage = if done { "end" } else { "start" };
         super::log_event(
             ctx,
-            &format!("upload batch end peer={peer} id=\"{id}\" label={label:?}"),
+            &format!(
+                "upload batch {stage} peer={peer} id=\"{id}\" label={label:?} count={count} total={total}",
+            ),
         );
         if let Some(hook) = &ctx.on_batch_end {
-            hook(super::UploadBatch { id, label, peer });
+            hook(super::UploadBatch {
+                id,
+                label,
+                peer,
+                count,
+                total,
+                done,
+            });
         }
         return (
             Response::empty(204).header("Cache-Control", "no-store"),
