@@ -146,5 +146,10 @@
   "upload.drag_hint": "也可以把文件拖到页面任意位置",
   "upload.key_hint": "上传 key 向分享者索取，输入一次会记住",
   "upload.key_drop_hint": "输入后也可以把文件直接拖到页面任意位置",
-  "upload.err.bad_path": "文件夹路径无效。"
+  "upload.err.bad_path": "文件夹路径无效。",
+  "upload.cancel": "取消",
+  "upload.cancelling": "正在取消…",
+  "upload.cancelled": "已取消，已经传完的文件会保留。",
+  "notify.receiving_folder": "正在接收文件夹「{name}」（{files} 个文件，{size}），来自 {peer}",
+  "notify.receiving_many": "正在接收 {files} 个文件（{size}），来自 {peer}"
 }

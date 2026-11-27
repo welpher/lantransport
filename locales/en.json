@@ -146,5 +146,10 @@
   "upload.drag_hint": "You can also drop files anywhere on this page",
   "upload.key_hint": "Get the upload key from the person sharing; it is remembered once entered",
   "upload.key_drop_hint": "After that you can also drop files anywhere on the page",
-  "upload.err.bad_path": "Invalid folder path."
+  "upload.err.bad_path": "Invalid folder path.",
+  "upload.cancel": "Cancel",
+  "upload.cancelling": "Cancelling…",
+  "upload.cancelled": "Cancelled. What already arrived stays.",
+  "notify.receiving_folder": "Receiving folder {name} ({files} files, {size}) from {peer}",
+  "notify.receiving_many": "Receiving {files} files ({size}) from {peer}"
 }

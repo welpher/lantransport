@@ -44,11 +44,16 @@ pub struct UploadNotice {
 
 pub type UploadHook = Arc<dyn Fn(UploadNotice) + Send + Sync>;
 
-/// The page says a batch is finished; the app can then summarise it.
+/// The page announces a drop and later says it is finished, so the app can
+/// start a row as soon as the first file lands and finish it at the end.
 pub struct UploadBatch {
     pub id: String,
     pub label: Option<String>,
     pub peer: std::net::IpAddr,
+    /// Files and bytes the page is about to send, when it knows.
+    pub count: u32,
+    pub total: u64,
+    pub done: bool,
 }
 
 pub type BatchHook = Arc<dyn Fn(UploadBatch) + Send + Sync>;

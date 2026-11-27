@@ -18,17 +18,27 @@ pub struct RecentUpload {
     pub at: u64,
     /// How many files arrived in one drop; 1 for a plain upload.
     pub files: u32,
+    /// The batch this row belongs to, so the row can grow while files arrive.
+    pub batch: Option<String>,
 }
 
 /// Files of one drop that have arrived so far, keyed by the id the page sends.
 /// The page closes the batch with `end=1` and the app then writes one entry.
 #[derive(Default)]
 pub struct PendingBatch {
+    pub label: Option<String>,
     pub peer: String,
     pub files: u32,
     pub bytes: u64,
     pub dir: Option<String>,
     pub started: u64,
+    /// What the page said it was about to send, for the first notification.
+    pub expected_files: u32,
+    pub expected_bytes: u64,
+    /// The row in `recent` exists, so later files only update it.
+    pub row: bool,
+    /// When the window was last told about this batch, in milliseconds.
+    pub last_emit: u64,
 }
 
 pub const RECENT_LIMIT: usize = 50;
