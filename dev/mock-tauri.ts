@@ -29,6 +29,8 @@ const snapshot = {
     { name: "holiday.mp4", bytes: 1288490188, peer: "192.168.1.7", dir: "/Users/me/Downloads", at: 1795690000 },
     { name: "contract.pdf", bytes: 860160, peer: "192.168.1.9", dir: "/Volumes/Photos", at: 1795686000 },
     { name: "Screenshot 2026-11-26 at 19.02.11.png", bytes: 483328, peer: "192.168.1.12", dir: "/Users/me/Downloads", at: 1795681000 },
+    // The folder is gone, so opening it has to show a localised message.
+    { name: "old-report.pdf", bytes: 220200, peer: "192.168.1.20", dir: "/Volumes/Gone/2024", at: 1795676000 },
   ],
 };
 
@@ -54,6 +56,11 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
     snapshot.port = null;
     snapshot.urls = [];
     return structuredClone(snapshot) as T;
+  }
+  if (command === "open_folder_command") {
+    const path = String(args?.path ?? "");
+    if (path.startsWith("/Volumes/Gone")) throw "folder_gone";
+    return null as T;
   }
   return null as T;
 }

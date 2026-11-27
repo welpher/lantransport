@@ -35,6 +35,8 @@
   "error.no_folder": "Choose a folder first.",
   "error.not_running": "Start sharing before copying an upload link.",
   "error.io": "Could not start. Please try again.",
+  "error.folder_gone": "That folder is gone — it may have been deleted or moved.",
+  "error.open_failed": "Could not open that folder.",
   "page.home": "Home",
   "page.items": "{n} items",
   "page.total": "{size} total",

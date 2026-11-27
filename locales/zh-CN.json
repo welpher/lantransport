@@ -35,6 +35,8 @@
   "error.no_folder": "先选择要共享的文件夹。",
   "error.not_running": "先开始共享，才能复制上传链接。",
   "error.io": "启动失败，请重试。",
+  "error.folder_gone": "这个文件夹已经不在了，可能被删除或移动了。",
+  "error.open_failed": "无法打开这个文件夹。",
   "page.home": "根目录",
   "page.items": "{n} 个项目",
   "page.total": "文件共 {size}",

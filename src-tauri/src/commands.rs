@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -139,12 +140,31 @@ pub fn open_folder(path: &std::path::Path) -> bool {
     spawned
 }
 
+/// The nearest folder at or above `path`. The folder remembered for an upload
+/// can be gone later — the visitor's subfolder was deleted, or the share was
+/// removed — and walking up beats failing with an error the page cannot explain.
+fn nearest_folder(path: &Path) -> Option<std::path::PathBuf> {
+    let mut candidate = path.to_path_buf();
+    for _ in 0..64 {
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+        if !candidate.pop() {
+            break;
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn open_folder_command(path: String) -> Result<(), String> {
-    if open_folder(std::path::Path::new(&path)) {
+    let Some(folder) = nearest_folder(Path::new(&path)) else {
+        return Err("folder_gone".into());
+    };
+    if open_folder(&folder) {
         Ok(())
     } else {
-        Err("not a folder".into())
+        Err("open_failed".into())
     }
 }
 
@@ -535,11 +555,31 @@ pub fn update_password(
 
 #[cfg(test)]
 mod share_tests {
-    use super::normalize_shares;
+    use super::{nearest_folder, normalize_shares};
 
     #[test]
     fn shares_are_trimmed_and_deduplicated() {
         let out = normalize_shares(vec![" /a ".into(), String::new(), "/a".into(), "/b".into()]);
         assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]);
+    }
+
+    #[test]
+    fn a_deleted_upload_folder_falls_back_to_the_nearest_parent() {
+        let root =
+            std::env::temp_dir().join(format!("lantransport-nearest-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("shared/gone")).unwrap();
+        let folder = root.join("shared/gone");
+        assert_eq!(
+            nearest_folder(&folder.join("file.txt")),
+            Some(folder.clone())
+        );
+        std::fs::remove_dir(&folder).unwrap();
+        assert_eq!(
+            nearest_folder(&folder.join("file.txt")),
+            Some(root.join("shared")),
+            "the parent is opened when the upload folder was deleted"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
