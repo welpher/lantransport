@@ -230,7 +230,7 @@ pub fn render(
     </div>
     <div class="up-area" id="up-area" hidden>
       <div class="drop" id="up-drop">
-        <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/><path d="M12 11v5"/><path d="M9.8 13.8 12 16l2.2-2.2"/></svg></span>
+        <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/><path d="M12 16v-5"/><path d="M9.8 13.2 12 11l2.2 2.2"/></svg></span>
         <div class="drop-copy">
           <strong>{drop}</strong>
           <span class="hint">{hint}</span>
