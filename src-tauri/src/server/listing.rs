@@ -243,8 +243,12 @@ pub fn render(
         <input id="up-files-dir" type="file" webkitdirectory multiple hidden>
       </div>
       <div class="up-status hint" id="up-status"></div>
-      <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
-      <button class="btn ghost" id="up-cancel" type="button" hidden>{cancel}</button>
+      <div class="up-progress-row" id="up-progress-row" hidden>
+        <div class="progress" id="up-progress"><div class="progress-bar" id="up-bar"></div></div>
+        <button class="icon-btn up-stop" id="up-cancel" type="button" aria-label="{cancel}" title="{cancel}">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10"/><path d="M17 7 7 17"/></svg>
+        </button>
+      </div>
       <button class="btn ghost" id="up-retry" type="button" hidden>{retry}</button>
     </div>
   </div>
@@ -1171,7 +1175,15 @@ const UPLOAD_CSS: &str = r#"
 }
 .keyrow input:focus { border-color: var(--accent); }
 .up-status { min-height: 18px; }
-#up-cancel, #up-retry { align-self: flex-start; }
+.up-progress-row { display: flex; align-items: center; gap: 8px; }
+.up-progress-row .progress { flex: 1 1 auto; }
+.up-stop {
+  flex: 0 0 auto; width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  color: var(--muted); background: var(--card);
+}
+.up-stop:hover { color: var(--danger, #d92d20); border-color: currentColor; }
+#up-retry { align-self: flex-start; }
 
 @media (max-width: 620px) {
   .keyrow input { font-size: 16px; }
@@ -1202,6 +1214,7 @@ const UPLOAD_JS: &str = r#"
   let cancelled = false;
   let uploading = false;
   const progress = document.getElementById('up-progress');
+  const progressRow = document.getElementById('up-progress-row');
   const bar = document.getElementById('up-bar');
   const storeKey = 'lantransport-upload-key';
   const params = new URLSearchParams(location.search);
@@ -1231,7 +1244,7 @@ const UPLOAD_JS: &str = r#"
   const resetProgress = () => {
     status.textContent = '';
     status.classList.remove('done');
-    progress.hidden = true;
+    progressRow.hidden = true;
     progress.classList.remove('done');
     progress.classList.remove('fade');
     bar.style.width = '0%';
@@ -1532,7 +1545,7 @@ const UPLOAD_JS: &str = r#"
       const speed = current / elapsed;
       const eta = speed > 0 && total > current ? (total - current) / speed : 0;
       status.textContent = (index + 1) + '/' + items.length + ' · ' + percent + '% · ' + humanSpeed(speed) + ' · ' + formatEta(eta);
-      progress.hidden = false;
+      progressRow.hidden = false;
       bar.style.width = percent + '%';
     };
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -1575,7 +1588,7 @@ const UPLOAD_JS: &str = r#"
     if (!cancelled) for (const dir of folders) await makeFolder(dir, key);
     if (batch) await endBatch(batch, label, key);
     if (cancelled) {
-      progress.hidden = true;
+      progressRow.hidden = true;
       bar.style.width = '0%';
       status.textContent = UP_MSG.cancelled;
       progress.classList.remove('done');
@@ -1586,7 +1599,7 @@ const UPLOAD_JS: &str = r#"
       return;
     }
     if (failed) {
-      progress.hidden = true;
+      progressRow.hidden = true;
       bar.style.width = '0%';
       status.textContent = failed + ' / ' + items.length + ' · ' + lastError;
       retryBtn.hidden = false;
@@ -1601,7 +1614,7 @@ const UPLOAD_JS: &str = r#"
       setTimeout(() => {
         progress.classList.remove('done');
         status.classList.remove('done');
-        progress.hidden = true;
+        progressRow.hidden = true;
         bar.style.width = '0%';
       }, 1600);
       // In-place refresh: the new file appears without a page flash, and the

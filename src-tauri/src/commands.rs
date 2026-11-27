@@ -19,6 +19,15 @@ pub fn notify(app: &AppHandle) {
     let _ = tray::refresh(app);
 }
 
+/// While files are arriving only the window has something new to show. Rebuilding
+/// the tray menu a few times a second put that work on the main thread, which is
+/// also where the window's commands run — a long upload could make Stop sharing
+/// look dead.
+pub fn notify_uploads(app: &AppHandle) {
+    let snapshot = state::snapshot(app);
+    let _ = app.emit("snapshot", snapshot);
+}
+
 /// Adds dropped folders to the share list. Files are ignored: dropping a file on
 /// the window means "share this folder", not "upload it".
 fn normalize_shares(shares: Vec<String>) -> Vec<String> {
@@ -152,18 +161,21 @@ fn accumulate(batch: &mut crate::state::PendingBatch, notice: &crate::server::Up
     });
 }
 
-/// The folder name a batch row shows: what the page called it, or the folder the
-/// files landed in (a multi-file pick has no folder of its own).
-fn batch_name(batch: &crate::state::PendingBatch) -> String {
+/// The name of the row a batch writes: the folder the page named, or the file
+/// itself when the drop was a multi-file pick.
+fn batch_name(batch: &crate::state::PendingBatch, file: &str) -> String {
     if let Some(label) = batch.label.as_deref().filter(|value| !value.is_empty()) {
         return label.to_string();
     }
-    batch
-        .dir
-        .as_deref()
-        .and_then(|dir| Path::new(dir).file_name())
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default()
+    if batch.folder {
+        return batch
+            .dir
+            .as_deref()
+            .and_then(|dir| Path::new(dir).file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+    }
+    file.to_string()
 }
 
 fn show_notification(app: &AppHandle, body: String) {
@@ -333,7 +345,7 @@ fn start_server(
                     recent.pop_back();
                 }
             }
-            notify(&upload_app);
+            notify_uploads(&upload_app);
             let locale = state.ui_locale();
             let body = i18n::t_args(
                 &locale,
@@ -352,10 +364,10 @@ fn start_server(
             return;
         };
 
-        // Part of a drop: the first file opens one row and one notification, the
-        // rest only make that row grow. A 1900-file folder therefore shows up
-        // straight away instead of at the very end.
-        let (first, name, files, bytes, emit) = {
+        // Part of a drop. A folder becomes one row and one notification, so a
+        // 1900-file folder does not become 1900 rows; a multi-file pick keeps one
+        // row per file, because those files are unrelated to each other.
+        let (first, folder, name, files, bytes, emit) = {
             let mut batches = state
                 .batches
                 .lock()
@@ -370,41 +382,58 @@ fn start_server(
                     ..Default::default()
                 });
             let first = !batch.row;
+            batch.row = true;
             accumulate(batch, &notice);
-            let name = batch_name(batch);
-            let emit = first || now_ms().saturating_sub(batch.last_emit) >= 300;
+            // A folder is one row that grows, so its updates are throttled; a
+            // multi-file pick is one row per file, so every file has to show.
+            let emit = first || !batch.folder || now_ms().saturating_sub(batch.last_emit) >= 300;
             if emit {
                 batch.last_emit = now_ms();
             }
-            (first, name, batch.files, batch.bytes, emit)
+            (
+                first,
+                batch.folder,
+                batch_name(batch, &notice.name),
+                batch.files,
+                batch.bytes,
+                emit,
+            )
         };
         if emit {
             let mut recent = state
                 .recent
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            if first {
-                recent.push_front(crate::state::RecentUpload {
-                    name: name.clone(),
-                    bytes,
-                    peer: notice.peer.to_string(),
-                    dir: notice.dir.to_string_lossy().into_owned(),
-                    at: now,
-                    files,
-                    batch: Some(id.clone()),
-                });
-                while recent.len() > crate::state::RECENT_LIMIT {
-                    recent.pop_back();
+            let existing = folder
+                .then(|| {
+                    recent
+                        .iter_mut()
+                        .find(|row| row.batch.as_deref() == Some(id.as_str()))
+                })
+                .flatten();
+            match existing {
+                // The folder row grows in place.
+                Some(row) => {
+                    row.files = files;
+                    row.bytes = bytes;
                 }
-            } else if let Some(row) = recent
-                .iter_mut()
-                .find(|row| row.batch.as_deref() == Some(id.as_str()))
-            {
-                row.files = files;
-                row.bytes = bytes;
+                None => {
+                    recent.push_front(crate::state::RecentUpload {
+                        name: name.clone(),
+                        bytes: if folder { bytes } else { notice.bytes },
+                        peer: notice.peer.to_string(),
+                        dir: notice.dir.to_string_lossy().into_owned(),
+                        at: now,
+                        files: if folder { files } else { 1 },
+                        batch: folder.then(|| id.clone()),
+                    });
+                    while recent.len() > crate::state::RECENT_LIMIT {
+                        recent.pop_back();
+                    }
+                }
             }
             drop(recent);
-            notify(&upload_app);
+            notify_uploads(&upload_app);
         }
         if first {
             let (expected_files, expected_bytes) = {
@@ -430,11 +459,12 @@ fn start_server(
             let locale = state.ui_locale();
             let size = crate::server::listing::human_size(shown_bytes);
             let count = shown_files.to_string();
-            let body = if name.is_empty() {
+            let body = if folder {
                 i18n::t_args(
                     &locale,
-                    "notify.receiving_many",
+                    "notify.receiving_folder",
                     &[
+                        ("name", name.clone()),
                         ("files", count),
                         ("size", size),
                         ("peer", notice.peer.to_string()),
@@ -443,9 +473,8 @@ fn start_server(
             } else {
                 i18n::t_args(
                     &locale,
-                    "notify.receiving_folder",
+                    "notify.receiving_many",
                     &[
-                        ("name", name.clone()),
                         ("files", count),
                         ("size", size),
                         ("peer", notice.peer.to_string()),
@@ -473,6 +502,7 @@ fn start_server(
                         started: unix_now(),
                         ..Default::default()
                     });
+            batch.folder = event.label.is_some();
             batch.label = event.label.clone().or(batch.label.take());
             batch.expected_files = event.count;
             batch.expected_bytes = event.total;
@@ -494,9 +524,10 @@ fn start_server(
             .recent
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if let Some(row) = recent
-            .iter_mut()
-            .find(|row| row.batch.as_deref() == Some(event.id.as_str()))
+        if pending.folder
+            && let Some(row) = recent
+                .iter_mut()
+                .find(|row| row.batch.as_deref() == Some(event.id.as_str()))
         {
             row.files = pending.files;
             row.bytes = pending.bytes;
@@ -506,7 +537,7 @@ fn start_server(
             }
         }
         drop(recent);
-        notify(&batch_app);
+        notify_uploads(&batch_app);
         append_log(
             &batch_app,
             &format!(
@@ -599,7 +630,7 @@ pub fn get_snapshot(app: AppHandle) -> Snapshot {
     state::snapshot(&app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn start_sharing(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -651,7 +682,7 @@ pub fn start_sharing(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn stop_sharing(app: AppHandle) -> Snapshot {
     stop_server(&app)
 }
@@ -804,18 +835,29 @@ mod share_tests {
     }
 
     #[test]
-    fn a_batch_is_named_after_its_folder() {
+    fn a_batch_is_named_after_its_folder_or_its_file() {
         let mut batch = crate::state::PendingBatch {
             dir: Some("/s/trip".to_string()),
+            folder: true,
             ..Default::default()
         };
         assert_eq!(
-            batch_name(&batch),
+            batch_name(&batch, "a.jpg"),
             "trip",
-            "falls back to the folder it landed in"
+            "a folder drop is named after the folder it landed in"
         );
         batch.label = Some("holiday".to_string());
-        assert_eq!(batch_name(&batch), "holiday", "the page's name wins");
+        assert_eq!(
+            batch_name(&batch, "a.jpg"),
+            "holiday",
+            "the page's name wins"
+        );
+        let pick = crate::state::PendingBatch::default();
+        assert_eq!(
+            batch_name(&pick, "a.jpg"),
+            "a.jpg",
+            "a multi-file pick keeps the file's own name"
+        );
     }
 
     #[test]

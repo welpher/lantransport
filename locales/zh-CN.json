@@ -151,5 +151,6 @@
   "upload.cancelling": "正在取消…",
   "upload.cancelled": "已取消，已经传完的文件会保留。",
   "notify.receiving_folder": "正在接收文件夹「{name}」（{files} 个文件，{size}），来自 {peer}",
-  "notify.receiving_many": "正在接收 {files} 个文件（{size}），来自 {peer}"
+  "notify.receiving_many": "正在接收 {files} 个文件（{size}），来自 {peer}",
+  "ui.status.stopping": "正在停止…"
 }
