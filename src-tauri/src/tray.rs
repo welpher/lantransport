@@ -9,6 +9,8 @@ use crate::state::{self, AppState};
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
+    // macOS wants a template image (glyph only); the other platforms get the
+    // full app icon.
     #[cfg(target_os = "macos")]
     let icon_bytes = include_bytes!("../icons/tray-template.png");
     #[cfg(not(target_os = "macos"))]

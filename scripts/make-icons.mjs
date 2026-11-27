@@ -9,18 +9,6 @@ await mkdir("public", { recursive: true });
 
 const mark = await readFile("assets/mark.svg", "utf8");
 
-// Tray: 44 px = 22 pt at 2x. macOS wants a black template image; Windows and
-// Linux get the brand blue.
-await sharp(Buffer.from(mark))
-  .resize(44, 44)
-  .png()
-  .toFile("src-tauri/icons/tray-template.png");
-// tint() multiplies chroma by luminance, and the glyph is pure black, so the
-// colour is applied to the source instead of post-processing it.
-await sharp(Buffer.from(mark.replaceAll("#000000", "#2563eb")))
-  .resize(44, 44)
-  .png()
-  .toFile("src-tauri/icons/tray.png");
 
 // App icon: rounded gradient background with the mark in white.
 const background = `<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
@@ -35,6 +23,17 @@ const icon = await sharp(Buffer.from(background))
   .png()
   .toBuffer();
 await writeFile("assets/icon.png", icon);
+
+// Tray icons, 44 px = 22 pt at 2x:
+// - macOS treats menu bar images as templates, so it gets the glyph alone (black,
+//   alpha only) and the system draws it black or white as the bar changes.
+// - Windows and Linux have no such rule, so they get the app icon itself and the
+//   tray matches the dock and the installer.
+await sharp(Buffer.from(mark))
+  .resize(44, 44)
+  .png()
+  .toFile("src-tauri/icons/tray-template.png");
+await sharp(icon).resize(44, 44).png().toFile("src-tauri/icons/tray.png");
 
 // Web copies: the desktop UI, the share page favicon and the web manifest.
 await sharp(icon).resize(128, 128).png().toFile("public/icon.png");
