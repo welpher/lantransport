@@ -136,6 +136,6 @@
   "tray.logs": "打开日志目录",
   "ui.drop_hint": "也可以把文件夹拖进这个窗口",
   "upload.drag_hint": "也可以把文件拖到页面任意位置",
-  "upload.key_hint": "上传 key 需要向共享这个文件夹的人索取。输入一次后会保存在这台设备上，下次不用再输。",
-  "upload.key_drop_hint": "输入 key 后，把文件拖到页面任意位置即可上传，也可以点下面的按钮选择。"
+  "upload.key_hint": "上传 key 向分享者索取，输入一次会记住",
+  "upload.key_drop_hint": "输入后也可以把文件直接拖到页面任意位置"
 }
