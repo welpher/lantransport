@@ -1005,6 +1005,7 @@ select:focus-visible { border-color: var(--accent); }
   padding: 24px;
   pointer-events: none;
 }
+.drop-overlay.no-label span { display: none; }
 .drop-overlay span {
   display: inline-flex;
   align-items: center;
@@ -1211,19 +1212,23 @@ const UPLOAD_JS: &str = r#"
 
   const hasFiles = (event) => Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
   let depth = 0;
-  // The dialog has its own drop zone; a second "drop to upload" banner on top of
-  // it just collides with the dialog's text.
+  // Dropping anywhere works with the dialog open too, so the frame stays; only
+  // its centred label would collide with the dialog's own text.
   const modalOpen = () => !modal.hidden;
+  const showOverlay = () => {
+    overlay.hidden = false;
+    overlay.classList.toggle('no-label', modalOpen());
+  };
   document.addEventListener('dragenter', (event) => {
     if (!hasFiles(event)) return;
     event.preventDefault();
     depth++;
-    if (!modalOpen()) overlay.hidden = false;
+    showOverlay();
   });
   document.addEventListener('dragover', (event) => {
     if (!hasFiles(event)) return;
     event.preventDefault();
-    if (overlay.hidden && !modalOpen()) overlay.hidden = false;
+    showOverlay();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
   });
   document.addEventListener('dragleave', (event) => {

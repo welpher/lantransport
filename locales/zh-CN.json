@@ -49,7 +49,7 @@
   "page.filtered": "筛选出 {n} 个项目",
   "page.language": "语言",
   "upload.title": "上传文件",
-  "upload.hint": "需要上传 key · 文件会存到当前浏览的文件夹",
+  "upload.hint": "页面任意位置都可以 · 文件存到当前文件夹",
   "upload.choose": "选择文件",
   "upload.need_key": "先填写上传 key",
   "upload.failed": "有文件上传失败",
@@ -93,7 +93,7 @@
   "ui.settings_locked": "停止共享后才能修改连接设置。",
   "ui.badge_lan": "局域网",
   "ui.badge_local": "本机",
-  "upload.drop": "把文件拖到这里",
+  "upload.drop": "拖入即可上传",
   "upload.open": "上传",
   "upload.close": "关闭",
   "upload.dropping": "松开即可上传",
@@ -135,5 +135,5 @@
   "page.find_back": "返回文件夹",
   "tray.logs": "打开日志目录",
   "ui.drop_hint": "也可以把文件夹拖进这个窗口",
-  "upload.drag_hint": "也可以把文件直接拖到这个页面"
+  "upload.drag_hint": "也可以把文件拖到页面任意位置"
 }
