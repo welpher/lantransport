@@ -148,9 +148,15 @@ fn quit(app: &AppHandle) {
 }
 
 pub fn show_main(app: &AppHandle) {
+    // A closed-to-tray app has no Dock icon; bring the Dock back before showing
+    // the window, or macOS opens it without a menu bar and without focus.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
+    #[cfg(target_os = "macos")]
+    let _ = app.set_dock_visibility(true);
 }
