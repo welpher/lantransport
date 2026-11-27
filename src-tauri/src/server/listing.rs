@@ -1016,7 +1016,9 @@ select:focus-visible { border-color: var(--accent); }
   justify-content: center;
   border: 3px dashed var(--accent);
   border-radius: 18px;
+  background: rgba(37, 99, 235, .10);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+  -webkit-backdrop-filter: blur(1px);
   backdrop-filter: blur(1px);
   color: var(--accent);
   font-size: 18px;
@@ -1025,12 +1027,19 @@ select:focus-visible { border-color: var(--accent); }
   padding: 24px;
   pointer-events: none;
 }
-.drop-overlay.over-page { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.drop-overlay.over-dialog { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+.drop-overlay.over-page {
+  background: rgba(37, 99, 235, .10);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.drop-overlay.over-dialog {
+  background: rgba(255, 255, 255, .78);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+}
 .drop-overlay span {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .55);
   text-shadow: 0 1px 0 color-mix(in srgb, var(--bg) 60%, transparent);
 }
 .foot-brand { color: inherit; text-decoration: none; opacity: .7; }
@@ -1096,6 +1105,7 @@ const UPLOAD_CSS: &str = r#"
   width: 0;
   height: 100%;
   border-radius: inherit;
+  background: var(--accent);
   background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #ffffff));
   transition: width .2s linear, background-color .3s ease;
   position: relative;
@@ -1132,14 +1142,17 @@ const UPLOAD_CSS: &str = r#"
 .keyrow { display: flex; gap: 8px; }
 /* An info box around the two hint lines, so they read as one block of help
    instead of two loose paragraphs under the key field. */
+/* Plain rgba instead of color-mix: browsers older than Safari 16.2 /
+   Chrome 111 dropped the whole declaration and the box came out with no
+   border, no tint and no icon. */
 .note {
   display: flex;
   flex-direction: column;
   gap: 3px;
   padding: 9px 12px 10px;
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  border: 1px solid rgba(37, 99, 235, .28);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 7%, var(--card));
+  background: rgba(37, 99, 235, .07);
   color: var(--muted);
   font-size: 12.5px;
   line-height: 1.5;
@@ -1149,7 +1162,7 @@ const UPLOAD_CSS: &str = r#"
   display: flex;
   align-items: center;
   gap: 6px;
-  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+  color: var(--accent);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1159,6 +1172,8 @@ const UPLOAD_CSS: &str = r#"
   width: 13px;
   height: 13px;
   background: currentColor;
+  /* Safari only knows the prefixed property in older versions. */
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .keyfield { position: relative; flex: 1; min-width: 0; }
