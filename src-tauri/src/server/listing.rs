@@ -232,8 +232,12 @@ pub fn render(
           <strong>{drop}</strong>
           <span class="hint">{hint}</span>
         </div>
-        <button class="btn" id="up-pick" type="button">{choose}</button>
+        <div class="drop-actions">
+          <button class="btn" id="up-pick" type="button">{choose}</button>
+          <button class="btn ghost" id="up-pick-dir" type="button">{choose_dir}</button>
+        </div>
         <input id="up-files" type="file" multiple hidden>
+        <input id="up-files-dir" type="file" webkitdirectory multiple hidden>
       </div>
       <div class="up-status hint" id="up-status"></div>
       <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
@@ -247,6 +251,7 @@ pub fn render(
             hint = escape_html(&t("upload.hint")),
             drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
+            choose_dir = escape_html(&t("upload.choose_dir")),
             key = escape_html(&t("upload.key")),
             key_hint = escape_html(&t("upload.key_hint")),
             key_drop_hint = escape_html(&t("upload.key_drop_hint")),
@@ -265,12 +270,13 @@ pub fn render(
     );
 
     let upload_strings = format!(
-        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {} }};\nconst UP_RETRIES = 3;",
+        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {}, limit: {} }};\nconst UP_RETRIES = 3;",
         js_string(&t("upload.need_key")),
         js_string(&t("upload.failed")),
         js_string(&t("upload.done")),
         js_string(&t("upload.uploading")),
         js_string(&t("upload.retrying")),
+        js_string(&t("upload.limit")),
     );
 
     let lang_options: String = i18n::LANGUAGES
@@ -1064,6 +1070,7 @@ const UPLOAD_CSS: &str = r#"
 }
 .drop-copy { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 2px; }
 .drop-copy strong { font-size: 13.5px; color: var(--text); font-weight: 600; }
+.drop-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .progress {
   position: relative;
   height: 6px;
@@ -1160,11 +1167,13 @@ const UPLOAD_JS: &str = r#"
   const overlay = document.getElementById('up-overlay');
   const drop = document.getElementById('up-drop');
   const pick = document.getElementById('up-pick');
+  const pickDir = document.getElementById('up-pick-dir');
   const input = document.getElementById('up-files');
+  const inputDir = document.getElementById('up-files-dir');
   const keyInput = document.getElementById('up-key');
   const status = document.getElementById('up-status');
   const retryBtn = document.getElementById('up-retry');
-  let retryFiles = [];
+  let retryItems = [];
   const progress = document.getElementById('up-progress');
   const bar = document.getElementById('up-bar');
   const storeKey = 'lantransport-upload-key';
@@ -1200,7 +1209,7 @@ const UPLOAD_JS: &str = r#"
     progress.classList.remove('fade');
     bar.style.width = '0%';
     retryBtn.hidden = true;
-    retryFiles = [];
+    retryItems = [];
   };
 
   const openModal = () => {
@@ -1224,9 +1233,17 @@ const UPLOAD_JS: &str = r#"
 
   pick.addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
-    const files = Array.from(input.files || []);
+    const items = itemsFromFiles(input.files);
     input.value = '';
-    upload(files);
+    upload(items, []);
+  });
+  pickDir.addEventListener('click', () => inputDir.click());
+  inputDir.addEventListener('change', () => {
+    // webkitRelativePath already starts with the folder that was picked, so the
+    // tree arrives intact and the server recreates the same folders.
+    const items = itemsFromFiles(inputDir.files);
+    inputDir.value = '';
+    upload(items, []);
   });
 
   const hasFiles = (event) => Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
@@ -1263,10 +1280,14 @@ const UPLOAD_JS: &str = r#"
     event.preventDefault();
     depth = 0;
     overlay.hidden = true;
-    const files = Array.from(event.dataTransfer.files || []);
-    if (!files.length) return;
-    openModal();
-    upload(files);
+    const transfer = event.dataTransfer;
+    if (!transfer) return;
+    void (async () => {
+      const found = await readDrop(transfer);
+      if (!found.items.length && !found.dirs.length) return;
+      openModal();
+      upload(found.items, found.dirs, found.truncated);
+    })();
   });
 
   drop.addEventListener('dragover', (event) => { event.preventDefault(); drop.classList.add('over'); });
@@ -1275,9 +1296,74 @@ const UPLOAD_JS: &str = r#"
     event.stopPropagation();
     event.preventDefault();
     drop.classList.remove('over');
-    const files = Array.from(event.dataTransfer.files || []);
-    if (files.length) upload(files);
+    const transfer = event.dataTransfer;
+    if (!transfer) return;
+    void (async () => {
+      const found = await readDrop(transfer);
+      if (found.items.length || found.dirs.length) upload(found.items, found.dirs, found.truncated);
+    })();
   });
+
+  // A folder upload keeps its shape: every entry carries the path it had inside
+  // the dropped folder, and the server recreates those folders. Hidden files are
+  // skipped because the listing hides them too and the server rejects the names.
+  const MAX_ITEMS = 2000;
+  const hidden = name => name.startsWith('.');
+
+  function itemsFromFiles(fileList) {
+    const items = [];
+    for (const file of Array.from(fileList || [])) {
+      const parts = (file.webkitRelativePath || file.name).split('/').filter(Boolean);
+      if (parts.some(hidden)) continue;
+      items.push({ file, path: parts.join('/') });
+    }
+    return items;
+  }
+
+  // Entries only exist while the drop event is being handled, so everything is
+  // read up front; readEntries() returns at most 100 children per call.
+  async function readDrop(transfer) {
+    const found = { items: [], dirs: [], truncated: false };
+    const roots = [];
+    for (const item of Array.from(transfer.items || [])) {
+      if (item.kind !== 'file' || !item.webkitGetAsEntry) continue;
+      const entry = item.webkitGetAsEntry();
+      if (entry) roots.push(entry);
+    }
+    if (!roots.length) {
+      return { items: itemsFromFiles(transfer.files), dirs: [], truncated: false };
+    }
+    for (const entry of roots) await walkEntry(entry, '', found);
+    return found;
+  }
+
+  async function walkEntry(entry, prefix, found) {
+    if (found.items.length >= MAX_ITEMS) { found.truncated = true; return; }
+    if (hidden(entry.name)) return;
+    if (entry.isFile) {
+      try {
+        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+        found.items.push({ file, path: prefix + file.name });
+      } catch (error) {
+        // An unreadable file is left out instead of failing the whole folder.
+      }
+      return;
+    }
+    if (!entry.isDirectory) return;
+    const dir = prefix + entry.name;
+    found.dirs.push(dir);
+    const reader = entry.createReader();
+    for (;;) {
+      let batch;
+      try {
+        batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      } catch (error) {
+        return;
+      }
+      if (!batch.length) return;
+      for (const child of batch) await walkEntry(child, dir + '/', found);
+    }
+  }
 
   function humanSpeed(bytesPerSecond) {
     if (!isFinite(bytesPerSecond) || bytesPerSecond <= 0) return '—';
@@ -1296,12 +1382,28 @@ const UPLOAD_JS: &str = r#"
     return minutes + 'm ' + Math.round(seconds % 60) + 's';
   }
 
-  function uploadUrl(file) {
-    // location.pathname is already percent-encoded; encode it once more only
-    // after decoding, or a folder called "a b" arrives as "a%20b" and fails.
-    let dirParam = location.pathname;
-    try { dirParam = decodeURIComponent(location.pathname); } catch (e) {}
-    return '/upload?dir=' + encodeURIComponent(dirParam) + '&name=' + encodeURIComponent(file.name);
+  // location.pathname is already percent-encoded; encode it once more only
+  // after decoding, or a folder called "a b" arrives as "a%20b" and fails.
+  function currentDir() {
+    try { return decodeURIComponent(location.pathname); } catch (e) { return location.pathname; }
+  }
+
+  function uploadUrl(item) {
+    return '/upload?dir=' + encodeURIComponent(currentDir())
+      + '&path=' + encodeURIComponent(item.path)
+      + '&name=' + encodeURIComponent(item.file.name);
+  }
+
+  // Folders without any file would otherwise vanish, so they are created with a
+  // request of their own.
+  async function makeFolder(path, key) {
+    const url = '/upload?mkdir=1&dir=' + encodeURIComponent(currentDir())
+      + '&path=' + encodeURIComponent(path);
+    try {
+      await fetch(url, { method: 'PUT', headers: { 'X-Upload-Key': key } });
+    } catch (error) {
+      // The folder is missing from the result; the files next to it still land.
+    }
   }
 
   // Ask how much of this file already reached the folder; a dropped connection
@@ -1317,8 +1419,9 @@ const UPLOAD_JS: &str = r#"
     }
   }
 
-  async function send(file, key, onProgress) {
-    const url = uploadUrl(file);
+  async function send(item, key, onProgress) {
+    const file = item.file;
+    const url = uploadUrl(item);
     const offset = Math.min(await bytesAlreadyThere(url, key), file.size);
     if (file.size > 0 && offset >= file.size) return;
     return new Promise((resolve, reject) => {
@@ -1341,14 +1444,16 @@ const UPLOAD_JS: &str = r#"
     });
   }
 
-  async function upload(files) {
-    if (!files.length) return;
+  async function upload(items, dirs, truncated) {
+    items = items || [];
+    const folders = (dirs || []).filter(dir => !items.some(item => item.path.startsWith(dir + '/')));
+    if (!items.length && !folders.length) return;
     setBusy(true);
     const key = keyInput.value.trim();
     if (!key) { status.textContent = UP_MSG.needKey; keyInput.focus(); return; }
-    retryFiles = [];
+    retryItems = [];
     retryBtn.hidden = true;
-    const total = files.reduce((sum, file) => sum + file.size, 0);
+    const total = items.reduce((sum, item) => sum + item.file.size, 0);
     let sent = 0;
     let failed = 0;
     let lastError = '';
@@ -1359,18 +1464,18 @@ const UPLOAD_JS: &str = r#"
       const elapsed = Math.max(0.2, (performance.now() - startedAt) / 1000);
       const speed = current / elapsed;
       const eta = speed > 0 && total > current ? (total - current) / speed : 0;
-      status.textContent = (index + 1) + '/' + files.length + ' · ' + percent + '% · ' + humanSpeed(speed) + ' · ' + formatEta(eta);
+      status.textContent = (index + 1) + '/' + items.length + ' · ' + percent + '% · ' + humanSpeed(speed) + ' · ' + formatEta(eta);
       progress.hidden = false;
       bar.style.width = percent + '%';
     };
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    for (let index = 0; index < files.length; index++) {
+    for (let index = 0; index < items.length; index++) {
       report(index, 0);
       let attempt = 0;
       while (true) {
         try {
-          await send(files[index], key, loaded => report(index, loaded));
-          sent += files[index].size;
+          await send(items[index], key, loaded => report(index, loaded));
+          sent += items[index].file.size;
           break;
         } catch (error) {
           // The next attempt asks the server how much arrived and continues
@@ -1385,16 +1490,17 @@ const UPLOAD_JS: &str = r#"
           }
           failed++;
           lastError = error.message || UP_MSG.failed;
-          retryFiles.push(files[index]);
-          status.textContent = files[index].name + ' · ' + lastError;
+          retryItems.push(items[index]);
+          status.textContent = items[index].path + ' · ' + lastError;
           break;
         }
       }
     }
+    for (const dir of folders) await makeFolder(dir, key);
     if (failed) {
       progress.hidden = true;
       bar.style.width = '0%';
-      status.textContent = failed + ' / ' + files.length + ' · ' + lastError;
+      status.textContent = failed + ' / ' + items.length + ' · ' + lastError;
       retryBtn.hidden = false;
       progress.classList.remove('done');
       status.classList.remove('done');
@@ -1402,7 +1508,8 @@ const UPLOAD_JS: &str = r#"
       bar.style.width = '100%';
       progress.classList.add('done');
       status.classList.add('done');
-      status.textContent = '\u2713 ' + UP_MSG.done;
+      status.textContent = '\u2713 ' + UP_MSG.done
+        + (truncated ? ' ' + UP_MSG.limit.replace('{n}', String(MAX_ITEMS)) : '');
       setTimeout(() => {
         progress.classList.remove('done');
         status.classList.remove('done');
@@ -1418,7 +1525,9 @@ const UPLOAD_JS: &str = r#"
   }
 
   retryBtn.addEventListener('click', () => {
-    if (retryFiles.length) void upload(retryFiles);
+    // Folders are already in place by the time a file fails, so only the failed
+    // files are sent again.
+    if (retryItems.length) void upload(retryItems, []);
   });
 })();
 "#;

@@ -334,6 +334,128 @@ fn upload_collision_gets_suffix() {
 }
 
 #[test]
+fn folder_upload_keeps_the_relative_path() {
+    let (root, server) = upload_server("folder-upload");
+    let reply = put(server.port, "path=a%2Fb%2Fnote.txt", Some("k3y"), "deep");
+    assert_eq!(reply.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(root.join("uploads/a/b/note.txt")).unwrap(),
+        "deep"
+    );
+    // The same base name in another folder is a different file, not a resume of
+    // the first one.
+    assert_eq!(
+        put(server.port, "path=c%2Fnote.txt", Some("k3y"), "other").status,
+        201
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("uploads/c/note.txt")).unwrap(),
+        "other"
+    );
+    assert!(
+        get(server.port, "/uploads/a/b/")
+            .text()
+            .contains("note.txt"),
+        "the new folder shows up on the page"
+    );
+}
+
+#[test]
+fn folder_upload_rejects_paths_that_escape() {
+    let (root, server) = upload_server("folder-escape");
+    for query in [
+        "path=..%2Fescape.txt",
+        "path=%2Ftmp%2Fescape.txt",
+        "path=a%2F..hidden%2Fx.txt",
+        "path=a%2F..%2Fescape.txt",
+        "path=a%5C..%5Cescape.txt",
+    ] {
+        let reply = put(server.port, query, Some("k3y"), "x");
+        assert_eq!(reply.status, 400, "{query}");
+        assert!(reply.text().contains("upload.err.bad_path"), "{query}");
+    }
+    let too_deep = format!("path={}", vec!["d"; 17].join("%2F"));
+    assert_eq!(put(server.port, &too_deep, Some("k3y"), "x").status, 400);
+    assert!(!root.parent().unwrap().join("escape.txt").exists());
+}
+
+#[test]
+fn folder_upload_does_not_follow_symlinks_out_of_the_share() {
+    let (root, server) = upload_server("folder-link");
+    let outside = std::env::temp_dir().join(format!(
+        "lantransport-folder-link-outside-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::create_dir_all(root.join("uploads")).unwrap();
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&outside, root.join("uploads/link")).unwrap();
+        let reply = put(server.port, "path=link%2Fescape.txt", Some("k3y"), "x");
+        assert_eq!(reply.status, 400);
+        assert!(!outside.join("escape.txt").exists());
+    }
+    let _ = std::fs::remove_dir_all(&outside);
+}
+
+#[test]
+fn folder_upload_can_create_an_empty_folder() {
+    let (root, server) = upload_server("folder-mkdir");
+    let empty = send(
+        server.port,
+        "PUT /upload?path=a%2Fempty&mkdir=1 HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(empty.status, 201);
+    assert!(root.join("uploads/a/empty").is_dir());
+
+    let no_path = send(
+        server.port,
+        "PUT /upload?mkdir=1 HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(no_path.status, 400);
+
+    let no_key = send(
+        server.port,
+        "PUT /upload?path=a%2Fnope&mkdir=1 HTTP/1.1\r\nHost: test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(no_key.status, 403);
+    assert!(!root.join("uploads/a/nope").exists());
+}
+
+#[test]
+fn folder_upload_resumes_from_the_relative_path() {
+    let (root, server) = upload_server("folder-resume");
+    let partial = send(
+        server.port,
+        "PUT /upload?path=a%2Fbig.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nX-Upload-Total: 6\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc",
+    );
+    assert_eq!(partial.status, 400);
+    assert_eq!(partial.header("x-upload-offset"), Some("3"));
+
+    let probe = send(
+        server.port,
+        "HEAD /upload?path=a%2Fbig.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nConnection: close\r\n\r\n",
+    );
+    assert_eq!(probe.status, 204);
+    assert_eq!(
+        probe.header("x-upload-offset"),
+        Some("3"),
+        "the probe has to key on the path, not the bare name"
+    );
+
+    let rest = send(
+        server.port,
+        "PUT /upload?path=a%2Fbig.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nX-Upload-Offset: 3\r\nX-Upload-Total: 6\r\nContent-Length: 3\r\nConnection: close\r\n\r\ndef",
+    );
+    assert_eq!(rest.status, 201);
+    assert_eq!(
+        std::fs::read_to_string(root.join("uploads/a/big.bin")).unwrap(),
+        "abcdef"
+    );
+}
+
+#[test]
 fn upload_rejects_bad_key_and_names() {
     let (root, server) = upload_server("upload-bad");
     assert_eq!(
