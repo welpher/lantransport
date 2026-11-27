@@ -133,5 +133,6 @@
   "page.find_empty": "这个文件夹及其子文件夹里都没有匹配的文件。",
   "page.find_count": "{n} 个匹配",
   "page.find_back": "返回文件夹",
-  "tray.logs": "打开日志目录"
+  "tray.logs": "打开日志目录",
+  "ui.drop_hint": "也可以把文件夹拖进这个窗口"
 }

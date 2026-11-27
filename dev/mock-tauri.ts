@@ -8,7 +8,7 @@ const snapshot = {
   version: "0.1.0",
   platform: "macos",
   settings: {
-    shares: ["/Users/me/Downloads", "/Volumes/Photos"],
+    shares: params.get("empty") === "1" ? [] : ["/Users/me/Downloads", "/Volumes/Photos"],
     port: 8787,
     password: null,
     remember_password: false,
