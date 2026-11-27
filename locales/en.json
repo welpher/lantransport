@@ -136,6 +136,6 @@
   "tray.logs": "Open logs folder",
   "ui.drop_hint": "or drag a folder into this window",
   "upload.drag_hint": "You can also drop files anywhere on this page",
-  "upload.key_hint": "Ask whoever shares the folder for the upload key. It is stored on this device after you type it, so you only enter it once.",
-  "upload.key_drop_hint": "Once the key is entered, drop files anywhere on this page (or use the button below)."
+  "upload.key_hint": "Get the upload key from the person sharing; it is remembered once entered",
+  "upload.key_drop_hint": "After that you can also drop files anywhere on the page"
 }
