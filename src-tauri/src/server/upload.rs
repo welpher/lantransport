@@ -25,6 +25,31 @@ impl Default for UploadConfig {
     }
 }
 
+/// File name plus the key that identifies a resumable upload: the whole relative
+/// path for a folder upload, the plain name otherwise.
+fn destination_name(query: &[(String, String)]) -> Result<(String, String), &'static str> {
+    if let Some(raw) = relative_path(query) {
+        let (_, name) = split_relative(raw).ok_or("upload.err.bad_path")?;
+        return Ok((name, raw.to_string()));
+    }
+    query
+        .iter()
+        .find(|(key, _)| key == "name")
+        .map(|(_, value)| value.as_str())
+        .and_then(safe_file_name)
+        .map(|name| (name.clone(), name))
+        .ok_or("upload.err.bad_name")
+}
+
+/// The `path` parameter of a folder upload, when there is one.
+fn relative_path(query: &[(String, String)]) -> Option<&str> {
+    query
+        .iter()
+        .find(|(key, _)| key == "path")
+        .map(|(_, value)| value.as_str())
+        .filter(|value| !value.is_empty())
+}
+
 /// Where a finished upload lands: the folder the visitor is looking at, or the
 /// legacy `uploads/` folder of the first share for pages that do not ask.
 fn upload_target(ctx: &ServerContext, query: &[(String, String)]) -> Option<PathBuf> {
@@ -66,18 +91,22 @@ pub fn probe(request: &Request, ctx: &ServerContext) -> Response {
     }
     let (_, raw_query) = split_target(&request.target);
     let query = query_pairs(raw_query);
-    let Some(name) = query
-        .iter()
-        .find(|(key, _)| key == "name")
-        .map(|(_, value)| value.as_str())
-        .and_then(safe_file_name)
-    else {
-        return fail(400, locale, "upload.err.bad_name");
+    let (_, resume_key) = match destination_name(&query) {
+        Ok(found) => found,
+        Err(key) => return fail(400, locale, key),
     };
-    let Some(directory) = upload_target(ctx, &query) else {
-        return fail(404, locale, "upload.err.no_folder");
+    let directory = match upload_place(ctx, &query) {
+        Ok((_, directory)) => directory,
+        Err(key) => {
+            let status = if key == "upload.err.no_folder" {
+                404
+            } else {
+                400
+            };
+            return fail(status, locale, key);
+        }
     };
-    let offset = fs::metadata(part_path(&directory, &name))
+    let offset = fs::metadata(part_path(&directory, &resume_key))
         .map(|meta| meta.len())
         .unwrap_or(0);
     Response::empty(204)
@@ -123,18 +152,42 @@ pub fn handle<R: BufRead>(
 
     let (_, raw_query) = split_target(&request.target);
     let query = query_pairs(raw_query);
-    let Some(name) = query
-        .iter()
-        .find(|(name, _)| name == "name")
-        .map(|(_, value)| value.as_str())
-        .and_then(safe_file_name)
-    else {
-        return (fail(400, locale, "upload.err.bad_name"), false);
+    let (name, resume_key) = match destination_name(&query) {
+        Ok(found) => found,
+        Err(key) => return (fail(400, locale, key), false),
+    };
+    let directory = match upload_place(ctx, &query) {
+        Ok((_, directory)) => directory,
+        Err(key) => {
+            let status = if key == "upload.err.no_folder" {
+                404
+            } else {
+                400
+            };
+            return (fail(status, locale, key), false);
+        }
     };
 
-    let Some(directory) = upload_target(ctx, &query) else {
-        return (fail(404, locale, "upload.err.no_folder"), false);
-    };
+    // An empty folder in a dragged tree has no file to carry it, so the page
+    // asks for the folders themselves with `mkdir=1`.
+    if query_param(&request.target, "mkdir").is_some_and(|value| value == "1") {
+        let relative = relative_path(&query).unwrap_or_default();
+        match make_folder(ctx, &query) {
+            Ok(created) => super::log_event(
+                ctx,
+                &format!("mkdir peer={peer} path=\"{relative}\" dir=\"{created:?}\""),
+            ),
+            Err(key) => return (fail(400, locale, key), false),
+        }
+        let has_body = request
+            .header("content-length")
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .is_some_and(|length| length > 0);
+        return (
+            Response::empty(201).header("Cache-Control", "no-store"),
+            !has_body,
+        );
+    }
     if fs::create_dir_all(&directory).is_err() {
         return (fail(500, locale, "upload.err.write"), false);
     }
@@ -181,7 +234,7 @@ pub fn handle<R: BufRead>(
         ),
     );
 
-    let temp = part_path(&directory, &name);
+    let temp = part_path(&directory, &resume_key);
     let mut file = match open_part(&temp, offset) {
         Ok(Some(file)) => file,
         Ok(None) => {
@@ -395,6 +448,76 @@ fn read_line<R: BufRead>(reader: &mut R, max: usize) -> std::io::Result<String> 
         .to_string())
 }
 
+/// Splits `a/b/c.jpg` into the directory chain and the file name. Every segment
+/// has to pass the same rules as a single file name, so `..`, absolute paths,
+/// hidden names and Windows reserved names are all rejected.
+fn split_relative(raw: &str) -> Option<(Vec<String>, String)> {
+    const MAX_DEPTH: usize = 16;
+    const MAX_LEN: usize = 1024;
+    if raw.len() > MAX_LEN
+        || raw.is_empty()
+        || raw.contains('\\')
+        || raw.starts_with('/')
+        || raw.contains('\0')
+    {
+        return None;
+    }
+    let segments: Vec<&str> = raw.split('/').filter(|part| !part.is_empty()).collect();
+    if segments.is_empty() || segments.len() > MAX_DEPTH {
+        return None;
+    }
+    let mut dirs = Vec::with_capacity(segments.len().saturating_sub(1));
+    for segment in &segments[..segments.len() - 1] {
+        dirs.push(safe_file_name(segment)?);
+    }
+    let name = safe_file_name(segments[segments.len() - 1])?;
+    Some((dirs, name))
+}
+
+/// Resolves the upload destination: the folder the visitor is looking at, plus
+/// any subfolders from a folder upload. New folders are created and then
+/// canonicalised again, so a symlink planted inside a share cannot redirect the
+/// write somewhere else.
+fn upload_place(
+    ctx: &ServerContext,
+    query: &[(String, String)],
+) -> Result<(PathBuf, PathBuf), &'static str> {
+    let base = upload_target(ctx, query).ok_or("upload.err.no_folder")?;
+    let Some(raw) = relative_path(query) else {
+        return Ok((base.clone(), base));
+    };
+    let (dirs, _) = split_relative(raw).ok_or("upload.err.bad_path")?;
+    let target = ensure_inside(&base, &dirs)?;
+    Ok((base, target))
+}
+
+/// Creates every folder along `path` and returns the deepest one, so a dragged
+/// tree that contains an empty folder still shows up on the page.
+fn make_folder(ctx: &ServerContext, query: &[(String, String)]) -> Result<PathBuf, &'static str> {
+    let base = upload_target(ctx, query).ok_or("upload.err.no_folder")?;
+    let (mut segments, name) =
+        split_relative(relative_path(query).unwrap_or_default()).ok_or("upload.err.bad_path")?;
+    segments.push(name);
+    ensure_inside(&base, &segments)
+}
+
+/// Joins `segments` onto `base`, creates the folders, then canonicalises both
+/// and checks the result is still below `base`: a symlink in the share could
+/// otherwise point the write at a folder outside of it.
+fn ensure_inside(base: &Path, segments: &[String]) -> Result<PathBuf, &'static str> {
+    let mut target = base.to_path_buf();
+    for segment in segments {
+        target.push(segment);
+    }
+    fs::create_dir_all(&target).map_err(|_| "upload.err.bad_path")?;
+    let base = fs::canonicalize(base).map_err(|_| "upload.err.no_folder")?;
+    let target = fs::canonicalize(&target).map_err(|_| "upload.err.bad_path")?;
+    if !target.starts_with(&base) {
+        return Err("upload.err.bad_path");
+    }
+    Ok(target)
+}
+
 fn safe_file_name(raw: &str) -> Option<String> {
     let name = raw.trim();
     if name.is_empty() || name.len() > 255 {
@@ -544,6 +667,53 @@ mod tests {
         assert_eq!(values[0], ("dir".into(), "/sub/".into()));
         assert_eq!(values[1], ("name".into(), "a b.txt".into()));
         assert_eq!(values[2], ("key".into(), "x".into()));
+    }
+
+    #[test]
+    fn splits_relative_paths_only_when_every_segment_is_safe() {
+        assert_eq!(
+            split_relative("a/b/c.jpg"),
+            Some((vec!["a".into(), "b".into()], "c.jpg".into()))
+        );
+        assert_eq!(split_relative("c.jpg"), Some((Vec::new(), "c.jpg".into())));
+        // Empty segments come from a trailing slash or a double slash.
+        assert_eq!(
+            split_relative("a//b.jpg"),
+            Some((vec!["a".into()], "b.jpg".into()))
+        );
+        assert!(split_relative("").is_none());
+        assert!(split_relative("a/../c.jpg").is_none());
+        assert!(split_relative("../c.jpg").is_none());
+        assert!(split_relative("/etc/passwd").is_none());
+        assert!(split_relative("a\\b.jpg").is_none());
+        assert!(split_relative("a/.hidden/c.jpg").is_none());
+        assert!(split_relative("a/b\0.jpg").is_none());
+        let deep = vec!["d"; 17].join("/");
+        assert!(split_relative(&deep).is_none(), "depth is capped");
+        let long = format!("{}.txt", "n".repeat(300));
+        assert!(split_relative(&long).is_none(), "length is capped");
+    }
+
+    #[test]
+    fn destination_names_use_the_whole_path_for_folder_uploads() {
+        let folder = query_pairs("path=a%2Fb%2Fnote.txt&name=note.txt");
+        assert_eq!(
+            destination_name(&folder),
+            Ok(("note.txt".into(), "a/b/note.txt".into()))
+        );
+        let plain = query_pairs("name=note.txt");
+        assert_eq!(
+            destination_name(&plain),
+            Ok(("note.txt".into(), "note.txt".into()))
+        );
+        assert_eq!(
+            destination_name(&query_pairs("path=..%2Fx")),
+            Err("upload.err.bad_path")
+        );
+        assert_eq!(
+            destination_name(&query_pairs("path=")),
+            Err("upload.err.bad_name")
+        );
     }
 
     fn scratch_dir(name: &str) -> PathBuf {

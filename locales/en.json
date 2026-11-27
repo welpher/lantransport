@@ -51,10 +51,13 @@
   "upload.title": "Upload files",
   "upload.hint": "Anywhere on the page works · saved in this folder",
   "upload.choose": "Choose files",
+  "upload.choose_dir": "Choose folder",
   "upload.need_key": "Enter the upload key first",
   "upload.failed": "Some uploads failed",
   "upload.done": "Uploaded. Refreshing…",
+  "upload.limit": "Only the first {n} files of that folder were sent.",
   "upload.key": "Upload key",
+  "upload.note_title": "About uploading",
   "upload.uploading": "Uploading",
   "error.400": "Malformed request.",
   "error.403": "Cannot read folder.",
@@ -137,5 +140,6 @@
   "ui.drop_hint": "or drag a folder into this window",
   "upload.drag_hint": "You can also drop files anywhere on this page",
   "upload.key_hint": "Get the upload key from the person sharing; it is remembered once entered",
-  "upload.key_drop_hint": "After that you can also drop files anywhere on the page"
+  "upload.key_drop_hint": "After that you can also drop files anywhere on the page",
+  "upload.err.bad_path": "Invalid folder path."
 }

@@ -51,10 +51,13 @@
   "upload.title": "上传文件",
   "upload.hint": "页面任意位置都可以 · 文件存到当前文件夹",
   "upload.choose": "选择文件",
+  "upload.choose_dir": "选择文件夹",
   "upload.need_key": "先填写上传 key",
   "upload.failed": "有文件上传失败",
   "upload.done": "上传完成，正在刷新…",
+  "upload.limit": "文件夹里文件太多，只发送了前 {n} 个。",
   "upload.key": "上传 key",
+  "upload.note_title": "上传说明",
   "upload.uploading": "上传中",
   "error.400": "请求格式不正确。",
   "error.403": "无法读取目录。",
@@ -137,5 +140,6 @@
   "ui.drop_hint": "也可以把文件夹拖进这个窗口",
   "upload.drag_hint": "也可以把文件拖到页面任意位置",
   "upload.key_hint": "上传 key 向分享者索取，输入一次会记住",
-  "upload.key_drop_hint": "输入后也可以把文件直接拖到页面任意位置"
+  "upload.key_drop_hint": "输入后也可以把文件直接拖到页面任意位置",
+  "upload.err.bad_path": "文件夹路径无效。"
 }
