@@ -63,6 +63,16 @@ pub fn run() {
                 if minimize {
                     api.prevent_close();
                     let _ = window.hide();
+                    // Closing the window means "keep running in the tray": on
+                    // macOS that also means leaving the Dock, which is what
+                    // people see as "it went to the tray".
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = window
+                            .app_handle()
+                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        let _ = window.app_handle().set_dock_visibility(false);
+                    }
                 }
             }
         })
