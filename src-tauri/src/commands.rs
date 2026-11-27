@@ -149,6 +149,14 @@ pub fn open_folder(path: &std::path::Path) -> bool {
     spawned
 }
 
+/// The Activity list is small; write it whenever it changes so a restart keeps it.
+fn persist_recent(
+    app: &AppHandle,
+    recent: &std::collections::VecDeque<crate::state::RecentUpload>,
+) {
+    crate::state::save_recent(app, recent);
+}
+
 /// Folds one uploaded file into the batch it belongs to.
 fn accumulate(batch: &mut crate::state::PendingBatch, notice: &crate::server::UploadNotice) {
     let dir = notice.dir.to_string_lossy().into_owned();
@@ -344,6 +352,7 @@ fn start_server(
                 while recent.len() > crate::state::RECENT_LIMIT {
                     recent.pop_back();
                 }
+                persist_recent(&upload_app, &recent);
             }
             notify_uploads(&upload_app);
             let locale = state.ui_locale();
@@ -432,6 +441,7 @@ fn start_server(
                     }
                 }
             }
+            persist_recent(&upload_app, &recent);
             drop(recent);
             notify_uploads(&upload_app);
         }
