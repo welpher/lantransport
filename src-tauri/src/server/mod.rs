@@ -135,6 +135,11 @@ fn bind_dual_stack(port: u16) -> std::io::Result<TcpListener> {
     use socket2::{Domain, Protocol, Socket, Type};
     let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
     socket.set_only_v6(false)?;
+    // A finished upload closes from this side, so the port keeps TIME_WAIT
+    // entries; without this, starting again right after a stop says "port in
+    // use" for up to a minute. std's TcpListener sets it on Unix too; the
+    // socket2 path has to ask for it.
+    socket.set_reuse_address(true)?;
     socket.bind(&std::net::SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)).into())?;
     socket.listen(1024)?;
     Ok(socket.into())
