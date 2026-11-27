@@ -309,10 +309,21 @@ function renderRecent(): void {
 
     const meta = document.createElement("span");
     meta.className = "recent-meta";
-    const time = new Date(item.at * 1000).toLocaleTimeString(locale, {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    // Rows survive a restart, so anything older than today needs a date.
+    const when = new Date(item.at * 1000);
+    const today = new Date();
+    const sameDay =
+      when.getFullYear() === today.getFullYear() &&
+      when.getMonth() === today.getMonth() &&
+      when.getDate() === today.getDate();
+    const time = sameDay
+      ? when.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })
+      : when.toLocaleString(locale, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
     const parts = [];
     if (item.name && files > 1) parts.push(label.recentFiles.replace("{n}", String(files)));
     parts.push(humanSize(item.bytes), item.peer, time);
