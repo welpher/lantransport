@@ -209,6 +209,15 @@ pub fn render(
         String::new()
     };
 
+    let drag_hint = if uploads {
+        format!(
+            "<p class=\"drag-hint\"><svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 16V4\"/><path d=\"m7.5 8.5 4.5-4.5 4.5 4.5\"/><path d=\"M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3\"/></svg>{}</p>",
+            escape_html(&t("upload.drag_hint"))
+        )
+    } else {
+        String::new()
+    };
+
     let upload_modal = if uploads {
         format!(
             r#"<div class="modal" id="up-modal" hidden>
@@ -234,7 +243,7 @@ pub fn render(
         <input id="up-files" type="file" multiple hidden>
       </div>
       <div class="up-status hint" id="up-status"></div>
-      <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div><span class="progress-done" id="up-done">&#10003;</span></div>
+      <div class="progress" id="up-progress" hidden><div class="progress-bar" id="up-bar"></div></div>
       <button class="btn ghost" id="up-retry" type="button" hidden>{retry}</button>
     </div>
   </div>
@@ -347,6 +356,7 @@ pub fn render(
     <button class="btn" id="select-download" type="button">{download_label}</button>
     <button class="btn ghost" id="select-cancel" type="button">{cancel_label}</button>
   </div>
+  {drag_hint}
   <div class="card list-card">
     <table>
       <thead><tr><th><button class="sort" type="button" data-sort="name">{name}</button></th><th><button class="sort" type="button" data-sort="size">{size}</button></th><th class="time-head"><button class="sort" type="button" data-sort="time">{modified}</button></th><th></th></tr></thead>
@@ -382,6 +392,7 @@ pub fn render(
         nonce = escape_html(nonce),
         upload_modal = upload_modal,
         upload_button = upload_button,
+        drag_hint = drag_hint,
         select_label = escape_html(&t("page.select")),
         select_all = escape_html(&t("page.select_all")),
         download_label = escape_html(&t("page.download")),
@@ -534,33 +545,34 @@ if (sortSelect) {
 }
 
 const refresh = document.getElementById('refresh');
-if (refresh) {
-  // Re-reading the list in place keeps the scroll position and the search term;
-  // the upload flow calls the same function instead of reloading the page.
-  async function refreshListing() {
-    if (refresh.classList.contains('busy')) return;
-    refresh.classList.add('busy');
-    setBusy(true);
-    try {
-      const response = await fetch(location.href, { cache: 'no-store' });
-      if (!response.ok) throw new Error('status ' + response.status);
-      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
-      const nextList = doc.getElementById('list');
-      const nextMeta = doc.getElementById('meta');
-      if (!nextList || !nextMeta) throw new Error('missing list');
-      list.replaceChildren(...Array.from(nextList.childNodes));
-      meta.textContent = nextMeta.textContent;
-      bindRows();
-    } catch (error) {
-      location.reload();
-      return;
-    } finally {
-      refresh.classList.remove('busy');
-      setBusy(false);
-    }
+
+// Re-reading the list in place keeps the scroll position and the search term;
+// the upload flow calls this too, so it must live at the top level rather than
+// inside the button's block.
+async function refreshListing() {
+  if (!refresh || refresh.classList.contains('busy')) return;
+  refresh.classList.add('busy');
+  setBusy(true);
+  try {
+    const response = await fetch(location.href, { cache: 'no-store' });
+    if (!response.ok) throw new Error('status ' + response.status);
+    const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const nextList = doc.getElementById('list');
+    const nextMeta = doc.getElementById('meta');
+    if (!nextList || !nextMeta) throw new Error('missing list');
+    list.replaceChildren(...Array.from(nextList.childNodes));
+    meta.textContent = nextMeta.textContent;
+    bindRows();
+  } catch (error) {
+    location.reload();
+    return;
+  } finally {
+    refresh.classList.remove('busy');
+    setBusy(false);
   }
-  refresh.addEventListener('click', () => { void refreshListing(); });
 }
+
+if (refresh) refresh.addEventListener('click', () => { void refreshListing(); });
 
 const selectModeBtn = document.getElementById('select-mode');
 const selectBar = document.getElementById('selectbar');
@@ -689,6 +701,7 @@ pub const STYLE: &str = r#"
   --line: #e3e6ea;
   --accent: #2563eb;
   --row-hover: #f2f5fa;
+  --ok: #16a34a;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -699,6 +712,7 @@ pub const STYLE: &str = r#"
     --line: #2b313a;
     --accent: #6ea8fe;
     --row-hover: #222832;
+    --ok: #3fb950;
   }
 }
 * { box-sizing: border-box; }
@@ -971,18 +985,27 @@ select:focus-visible { border-color: var(--accent); }
 .icon-x:hover { color: var(--text); background: var(--row-hover); }
 .drop-overlay {
   position: fixed;
-  inset: 12px;
-  z-index: 30;
+  inset: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px dashed var(--accent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--accent);
-  font-size: 18px;
-  font-weight: 600;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(2px);
   pointer-events: none;
+}
+.drop-overlay span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: 0 10px 30px rgba(16, 24, 40, .18);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 600;
 }
 .foot-brand { color: inherit; text-decoration: none; opacity: .7; }
 .foot-brand:hover { opacity: 1; text-decoration: underline; }
@@ -1034,24 +1057,48 @@ const UPLOAD_CSS: &str = r#"
 }
 .drop-copy { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 2px; }
 .drop-copy strong { font-size: 13.5px; color: var(--text); font-weight: 600; }
-.progress { position: relative; height: 4px; background: var(--line); border-radius: 999px; overflow: hidden; }
-.progress.done { height: 18px; overflow: visible; }
-.progress-bar { transition: background-color .2s ease; }
-.progress.done .progress-bar { opacity: 0; }
-.progress-done {
-  position: absolute;
-  inset: -7px 0 0;
-  display: grid;
-  place-items: center;
-  color: var(--ok);
-  font-size: 15px;
-  font-weight: 700;
-  opacity: 0;
-  transform: scale(.6);
-  transition: opacity .18s ease-out, transform .18s ease-out;
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+  transition: box-shadow .3s ease;
 }
-.progress.done .progress-done { opacity: 1; transform: scale(1); }
-.progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .2s; }
+.progress-bar {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #ffffff));
+  transition: width .2s linear, background-color .3s ease;
+  position: relative;
+  overflow: hidden;
+}
+/* a sheen that keeps moving while bytes are flowing */
+.progress:not(.done) .progress-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
+  width: 40%;
+  animation: sheen 1.1s linear infinite;
+}
+@keyframes sheen { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+.progress.done { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.progress.done .progress-bar {
+  background: var(--ok);
+  animation: none;
+}
+.progress.done .progress-bar::after { display: none; }
+.up-status.done { color: var(--ok); font-weight: 600; }
+.drag-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -6px 0 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
 .drop-icon { display: flex; flex: 0 0 auto; color: var(--accent); transition: transform .15s ease; }
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
 .drop.over .drop-icon { transform: translateY(-2px) scale(1.06); }
@@ -1123,6 +1170,10 @@ const UPLOAD_JS: &str = r#"
 
   const openModal = () => {
     modal.hidden = false;
+    // The dialog has its own drop zone; dismiss the page-wide banner if a drag
+    // opened it a moment earlier.
+    overlay.hidden = true;
+    depth = 0;
     if (!keyInput.value.trim()) keyInput.focus();
   };
   const closeModal = () => { modal.hidden = true; };
@@ -1141,15 +1192,19 @@ const UPLOAD_JS: &str = r#"
 
   const hasFiles = (event) => Array.from((event.dataTransfer && event.dataTransfer.types) || []).includes('Files');
   let depth = 0;
+  // The dialog has its own drop zone; a second "drop to upload" banner on top of
+  // it just collides with the dialog's text.
+  const modalOpen = () => !modal.hidden;
   document.addEventListener('dragenter', (event) => {
     if (!hasFiles(event)) return;
     event.preventDefault();
     depth++;
-    overlay.hidden = false;
+    if (!modalOpen()) overlay.hidden = false;
   });
   document.addEventListener('dragover', (event) => {
     if (!hasFiles(event)) return;
     event.preventDefault();
+    if (overlay.hidden && !modalOpen()) overlay.hidden = false;
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
   });
   document.addEventListener('dragleave', (event) => {
@@ -1296,15 +1351,18 @@ const UPLOAD_JS: &str = r#"
       status.textContent = failed + ' / ' + files.length + ' · ' + lastError;
       retryBtn.hidden = false;
       progress.classList.remove('done');
+      status.classList.remove('done');
     } else {
       bar.style.width = '100%';
       progress.classList.add('done');
-      status.textContent = UP_MSG.done;
+      status.classList.add('done');
+      status.textContent = '\u2713 ' + UP_MSG.done;
       setTimeout(() => {
         progress.classList.remove('done');
+        status.classList.remove('done');
         progress.hidden = true;
         bar.style.width = '0%';
-      }, 1500);
+      }, 1600);
       // In-place refresh: the new file appears without a page flash, and the
       // tick above stays on screen long enough to be seen.
       setTimeout(() => { void refreshListing(); }, 800);

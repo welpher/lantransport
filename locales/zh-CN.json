@@ -134,5 +134,6 @@
   "page.find_count": "{n} 个匹配",
   "page.find_back": "返回文件夹",
   "tray.logs": "打开日志目录",
-  "ui.drop_hint": "也可以把文件夹拖进这个窗口"
+  "ui.drop_hint": "也可以把文件夹拖进这个窗口",
+  "upload.drag_hint": "也可以把文件直接拖到这个页面"
 }
