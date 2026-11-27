@@ -479,7 +479,7 @@ function applySort(key, dir, remember) {
   if (remember !== false) {
     document.cookie = 'lt_sort=' + key + ':' + dir + '; Path=/; Max-Age=31536000; SameSite=Lax';
   }
-  list.replaceChildren(...groups.parent, ...groups.dir.slice().sort(compare), ...groups.file.slice().sort(compare));
+  setChildren(list, [...groups.parent, ...groups.dir.slice().sort(compare), ...groups.file.slice().sort(compare)]);
   document.querySelectorAll('th .sort').forEach(button => {
     const active = button.dataset.sort === key;
     button.classList.toggle('active', active);
@@ -495,6 +495,13 @@ function staggerRows() {
     row.style.animationDelay = (index * 12) + 'ms';
     row.classList.add('row-in');
   });
+}
+
+// replaceChildren() is Safari 14; an older phone would throw here and the list
+// would stop refreshing.
+function setChildren(element, nodes) {
+  while (element.firstChild) element.removeChild(element.firstChild);
+  element.append(...nodes);
 }
 
 function setBusy(on) {
@@ -580,7 +587,7 @@ async function refreshListing() {
     const nextList = doc.getElementById('list');
     const nextMeta = doc.getElementById('meta');
     if (!nextList || !nextMeta) throw new Error('missing list');
-    list.replaceChildren(...Array.from(nextList.childNodes));
+    setChildren(list, Array.from(nextList.childNodes));
     meta.textContent = nextMeta.textContent;
     bindRows();
   } catch (error) {
@@ -973,7 +980,10 @@ select:focus-visible { border-color: var(--accent); }
 .top-actions select { padding: 0 10px; }
 .modal {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -1009,7 +1019,10 @@ select:focus-visible { border-color: var(--accent); }
 .icon-x:hover { color: var(--text); background: var(--row-hover); }
 .drop-overlay {
   position: fixed;
-  inset: 12px;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
   z-index: 40;
   display: flex;
   align-items: center;
@@ -1115,13 +1128,19 @@ const UPLOAD_CSS: &str = r#"
 .progress:not(.done) .progress-bar::after {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent);
   width: 40%;
   animation: sheen 1.1s linear infinite;
 }
 @keyframes sheen { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
-.progress.done { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.progress.done {
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, .18);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
+}
 .progress.done .progress-bar {
   background: var(--ok);
   animation: none;
