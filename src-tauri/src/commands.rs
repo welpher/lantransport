@@ -691,6 +691,12 @@ pub fn update_password(
 mod share_tests {
     use super::{accumulate, common_ancestor, nearest_folder, normalize_shares};
 
+    /// Paths come out with the platform separator, so compare folders the way
+    /// std does instead of comparing strings.
+    fn same_folder(actual: &str, expected: &str) -> bool {
+        std::path::Path::new(actual) == std::path::Path::new(expected)
+    }
+
     #[test]
     fn shares_are_trimmed_and_deduplicated() {
         let out = normalize_shares(vec![" /a ".into(), String::new(), "/a".into(), "/b".into()]);
@@ -712,22 +718,25 @@ mod share_tests {
         assert_eq!(batch.files, 2);
         assert_eq!(batch.bytes, 15);
         assert_eq!(batch.peer, "192.168.1.7");
-        assert_eq!(batch.dir.as_deref(), Some("/s/trip"));
+        assert!(
+            same_folder(batch.dir.as_deref().unwrap_or_default(), "/s/trip"),
+            "got {:?}",
+            batch.dir
+        );
     }
 
     #[test]
     fn a_batch_opens_at_the_folder_its_files_share() {
-        assert_eq!(
-            common_ancestor("/s/trip/day1", "/s/trip/day2"),
-            "/s/trip".to_string()
-        );
-        assert_eq!(
-            common_ancestor("/s/trip/day1", "/s/trip/day1"),
-            "/s/trip/day1".to_string()
-        );
-        assert_eq!(
-            common_ancestor("/s/trip", "/s/other"),
-            "/s".to_string(),
+        assert!(same_folder(
+            &common_ancestor("/s/trip/day1", "/s/trip/day2"),
+            "/s/trip"
+        ));
+        assert!(same_folder(
+            &common_ancestor("/s/trip/day1", "/s/trip/day1"),
+            "/s/trip/day1"
+        ));
+        assert!(
+            same_folder(&common_ancestor("/s/trip", "/s/other"), "/s"),
             "a drop spread over two folders opens at their parent"
         );
     }
