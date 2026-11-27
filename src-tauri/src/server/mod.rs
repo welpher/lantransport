@@ -15,7 +15,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, RwLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime};
 
@@ -458,8 +458,10 @@ fn handle_connection(mut stream: TcpStream, context: Arc<ServerContext>) {
     }
 }
 
-/// Reused across events so the hot auth-failure path does not re-open the file.
-static LOG_FILE: OnceLock<Mutex<Option<(PathBuf, std::fs::File)>>> = OnceLock::new();
+/// One log file is capped at this size; when it fills, it is renamed to `<path>.1`
+/// (replacing the previous `.1`) and a fresh file is started. Two files, 20 MB
+/// worst case: enough to keep the run that crashed without growing forever.
+pub const LOG_LIMIT: u64 = 10 * 1024 * 1024;
 
 pub fn log_event(ctx: &ServerContext, message: &str) {
     let line = format!(
@@ -469,22 +471,62 @@ pub fn log_event(ctx: &ServerContext, message: &str) {
         message
     );
     if let Some(path) = &ctx.log {
-        let slot = LOG_FILE.get_or_init(|| Mutex::new(None));
-        let mut guard = slot.lock().unwrap_or_else(|error| error.into_inner());
-        if guard.as_ref().is_none_or(|(current, _)| current != path) {
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            *guard = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-                .ok()
-                .map(|file| (path.clone(), file));
-        }
-        if let Some((_, file)) = guard.as_mut() {
-            let _ = file.write_all(line.as_bytes());
-        }
+        append_line(path, &line, LOG_LIMIT);
     }
     eprint!("{line}");
+}
+
+/// Appends one already-formatted line, rotating first when the file is full.
+/// Every writer goes through here: holding a cached handle while another writer
+/// rotates would leave it writing into the renamed inode.
+pub fn append_line(path: &std::path::Path, line: &str, limit: u64) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if std::fs::metadata(path)
+        .map(|meta| meta.len() >= limit)
+        .unwrap_or(false)
+    {
+        let previous = path.with_extension("log.1");
+        let _ = std::fs::remove_file(&previous);
+        let _ = std::fs::rename(path, &previous);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+
+    #[test]
+    fn rotates_once_the_file_reaches_the_limit() {
+        let dir = std::env::temp_dir().join(format!("lt-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("lantransport.log");
+
+        append_line(&path, "first\n", 32);
+        append_line(&path, "second line that fills it\n", 32);
+        assert!(std::fs::metadata(&path).unwrap().len() >= 32);
+
+        append_line(&path, "after rotation\n", 32);
+        let current = std::fs::read_to_string(&path).unwrap();
+        let previous = std::fs::read_to_string(dir.join("lantransport.log.1")).unwrap();
+        assert_eq!(current, "after rotation\n");
+        assert!(previous.contains("second line"), "older bytes moved aside");
+
+        // a second rotation replaces the previous file instead of piling up
+        append_line(&path, "more than thirty two bytes of text here\n", 32);
+        assert!(dir.join("lantransport.log.1").exists());
+        let entries = std::fs::read_dir(&dir).unwrap().count();
+        assert_eq!(entries, 2, "only the current file and one rotation");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
