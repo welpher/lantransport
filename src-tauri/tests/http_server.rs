@@ -430,6 +430,29 @@ fn folder_upload_can_create_an_empty_folder() {
 }
 
 #[test]
+fn stopping_during_an_upload_does_not_wait_for_it() {
+    let (_, mut server) = upload_server("stop-during-upload");
+    let port = server.port;
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    stream
+        .write_all(
+            b"PUT /upload?name=big.bin HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nX-Upload-Total: 1000\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n",
+        )
+        .expect("headers");
+    // Send a little and then sit on the connection, like a phone on a slow link.
+    stream.write_all(&[b'a'; 64]).expect("body start");
+    let started = std::time::Instant::now();
+    server.stop();
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "stop took {elapsed:?} while a client was mid-upload"
+    );
+    // The port is free again, so the app can start sharing right away.
+    assert!(std::net::TcpListener::bind(("127.0.0.1", port)).is_ok());
+}
+
+#[test]
 fn a_batch_is_one_notice_per_file_and_one_end() {
     use std::sync::{Arc, Mutex};
     type Seen = Arc<Mutex<Vec<(String, Option<String>)>>>;

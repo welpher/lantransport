@@ -187,6 +187,7 @@ function text() {
     tagline: t("ui.tagline"),
     running: t("ui.status.running"),
     stopped: t("ui.status.stopped"),
+    stopping: t("ui.status.stopping"),
     starting: t("ui.status.starting"),
     folder: t("ui.folder"),
     choose: t("ui.choose"),
@@ -486,7 +487,13 @@ function apply(): void {
   }
 
   elements.status.classList.toggle("on", running);
-  elements.statusText.textContent = busy ? label.starting : running ? label.running : label.stopped;
+  elements.statusText.textContent = busy
+    ? running
+      ? label.stopping
+      : label.starting
+    : running
+      ? label.running
+      : label.stopped;
 
   const portInvalid = !Number.isInteger(portValue()) || portValue() < 1 || portValue() > 65535;
   elements.run.disabled =

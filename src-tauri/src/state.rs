@@ -35,8 +35,11 @@ pub struct PendingBatch {
     /// What the page said it was about to send, for the first notification.
     pub expected_files: u32,
     pub expected_bytes: u64,
-    /// The row in `recent` exists, so later files only update it.
+    /// A row in `recent` exists, so later files only update it.
     pub row: bool,
+    /// The drop was a folder (the page sent a name), so it becomes one row;
+    /// a multi-file pick gets one row per file.
+    pub folder: bool,
     /// When the window was last told about this batch, in milliseconds.
     pub last_emit: u64,
 }
