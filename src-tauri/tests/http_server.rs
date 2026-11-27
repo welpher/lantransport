@@ -430,6 +430,47 @@ fn folder_upload_can_create_an_empty_folder() {
 }
 
 #[test]
+fn the_port_can_be_used_again_right_after_a_stop() {
+    let root = temp_root("restart");
+    let upload = UploadConfig {
+        enabled: true,
+        key: "k3y".into(),
+        max_bytes: 1024,
+    };
+    // allow_lan: this is the dual-stack socket the app uses.
+    let mut first = ServerHandle::start(
+        std::slice::from_ref(&root),
+        0,
+        true,
+        None,
+        upload.clone(),
+        None,
+        None,
+    )
+    .expect("server starts");
+    let port = first.port;
+    // An upload is answered with `Connection: close`, so this side closes first
+    // and the port keeps a TIME_WAIT entry — the case that made the restart fail.
+    assert_eq!(put(port, "name=bye.txt", Some("k3y"), "x").status, 201);
+    first.stop();
+
+    let again = ServerHandle::start(
+        std::slice::from_ref(&root),
+        port,
+        true,
+        None,
+        upload,
+        None,
+        None,
+    );
+    assert!(
+        again.is_ok(),
+        "starting again on {port} right after a stop must work: {:?}",
+        again.err()
+    );
+}
+
+#[test]
 fn stopping_during_an_upload_does_not_wait_for_it() {
     let (_, mut server) = upload_server("stop-during-upload");
     let port = server.port;

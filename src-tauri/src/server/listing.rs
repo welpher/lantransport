@@ -280,7 +280,7 @@ pub fn render(
     );
 
     let upload_strings = format!(
-        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {}, limit: {}, cancelling: {}, cancelled: {} }};\nconst UP_RETRIES = 3;",
+        "const UP_MSG = {{ needKey: {}, failed: {}, done: {}, uploading: {}, retrying: {}, limit: {}, cancelling: {}, cancelled: {}, queued: {} }};\nconst UP_RETRIES = 3;",
         js_string(&t("upload.need_key")),
         js_string(&t("upload.failed")),
         js_string(&t("upload.done")),
@@ -289,6 +289,7 @@ pub fn render(
         js_string(&t("upload.limit")),
         js_string(&t("upload.cancelling")),
         js_string(&t("upload.cancelled")),
+        js_string(&t("upload.queued")),
     );
 
     let lang_options: String = i18n::LANGUAGES
@@ -1255,8 +1256,14 @@ const UPLOAD_JS: &str = r#"
   };
 
   const openModal = () => {
+    const running = uploading;
     modal.hidden = false;
     resetProgress();
+    if (running) {
+      cancelled = false;
+      cancelBtn.hidden = false;
+      progressRow.hidden = false;
+    }
     // The dialog has its own drop zone; dismiss the page-wide banner if a drag
     // opened it a moment earlier.
     overlay.hidden = true;
@@ -1523,71 +1530,104 @@ const UPLOAD_JS: &str = r#"
     });
   }
 
+  // Drops are queued: dragging more files while a folder is still arriving must
+  // not start a second upload, or the second one finishing would close the
+  // dialog and wipe the progress of the first.
+  const jobs = [];
+  let queued = 0;
+
   async function upload(items, dirs, truncated) {
     items = items || [];
     const folders = (dirs || []).filter(dir => !items.some(item => item.path.startsWith(dir + '/')));
     if (!items.length && !folders.length) return;
-    setBusy(true);
     const key = keyInput.value.trim();
     if (!key) { status.textContent = UP_MSG.needKey; keyInput.focus(); return; }
+    jobs.push({ items, folders, truncated });
+    queued += items.length;
+    if (uploading) {
+      status.textContent = UP_MSG.queued.replace('{n}', String(queued));
+      return;
+    }
     retryItems = [];
     retryBtn.hidden = true;
-    const total = items.reduce((sum, item) => sum + item.file.size, 0);
-    const batch = items.length > 1 ? newBatch() : '';
-    let sent = 0;
-    let failed = 0;
-    let lastError = '';
-    const startedAt = performance.now();
-    const report = (index, loaded) => {
-      const current = sent + loaded;
-      const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 100;
-      const elapsed = Math.max(0.2, (performance.now() - startedAt) / 1000);
-      const speed = current / elapsed;
-      const eta = speed > 0 && total > current ? (total - current) / speed : 0;
-      status.textContent = (index + 1) + '/' + items.length + ' · ' + percent + '% · ' + humanSpeed(speed) + ' · ' + formatEta(eta);
-      progressRow.hidden = false;
-      bar.style.width = percent + '%';
-    };
-    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const label = batch ? batchLabel(items) : '';
     cancelled = false;
     uploading = true;
-    if (batch) await startBatch(batch, label, items.length, total, key);
-    cancelBtn.hidden = false;
-    for (let index = 0; index < items.length && !cancelled; index++) {
-      report(index, 0);
-      let attempt = 0;
-      while (true) {
-        try {
-          await send(items[index], key, loaded => report(index, loaded), batch);
-          sent += items[index].file.size;
-          break;
-        } catch (error) {
-          if (cancelled) break;
-          // The next attempt asks how much arrived and continues from there, so
-          // a flaky Wi-Fi blip usually repairs itself.
-          attempt++;
-          if (attempt <= UP_RETRIES) {
-            status.textContent = UP_MSG.retrying
-              .replace('{n}', String(attempt))
-              .replace('{total}', String(UP_RETRIES));
-            await sleep(attempt === 1 ? 1000 : 3000);
+    setBusy(true);
+    try {
+      await runJobs(key);
+    } finally {
+      uploading = false;
+      queued = 0;
+      cancelBtn.hidden = true;
+    }
+  }
+
+  async function runJobs(key) {
+    let failed = 0;
+    let lastError = '';
+    let truncated = false;
+    let done = 0;
+    while (jobs.length && !cancelled) {
+      const job = jobs.shift();
+      queued -= job.items.length;
+      done += job.items.length;
+      const items = job.items;
+      const total = items.reduce((sum, item) => sum + item.file.size, 0);
+      const batch = items.length > 1 ? newBatch() : '';
+      const label = batch ? batchLabel(items) : '';
+      let sent = 0;
+      const startedAt = performance.now();
+      const report = (index, loaded) => {
+        const current = sent + loaded;
+        const percent = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 100;
+        const elapsed = Math.max(0.2, (performance.now() - startedAt) / 1000);
+        const speed = current / elapsed;
+        const eta = speed > 0 && total > current ? (total - current) / speed : 0;
+        status.textContent = (index + 1) + '/' + items.length + ' · ' + percent + '% · '
+          + humanSpeed(speed) + ' · ' + formatEta(eta)
+          + (queued > 0 ? ' · ' + UP_MSG.queued.replace('{n}', String(queued)) : '');
+        progressRow.hidden = false;
+        bar.style.width = percent + '%';
+      };
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      if (batch) await startBatch(batch, label, items.length, total, key);
+      cancelBtn.hidden = false;
+      for (let index = 0; index < items.length && !cancelled; index++) {
+        report(index, 0);
+        let attempt = 0;
+        while (true) {
+          try {
+            await send(items[index], key, loaded => report(index, loaded), batch);
+            sent += items[index].file.size;
+            break;
+          } catch (error) {
             if (cancelled) break;
-            continue;
+            // The next attempt asks how much arrived and continues from there,
+            // so a flaky Wi-Fi blip usually repairs itself.
+            attempt++;
+            if (attempt <= UP_RETRIES) {
+              status.textContent = UP_MSG.retrying
+                .replace('{n}', String(attempt))
+                .replace('{total}', String(UP_RETRIES));
+              await sleep(attempt === 1 ? 1000 : 3000);
+              if (cancelled) break;
+              continue;
+            }
+            failed++;
+            lastError = error.message || UP_MSG.failed;
+            retryItems.push(items[index]);
+            status.textContent = items[index].path + ' · ' + lastError;
+            break;
           }
-          failed++;
-          lastError = error.message || UP_MSG.failed;
-          retryItems.push(items[index]);
-          status.textContent = items[index].path + ' · ' + lastError;
-          break;
         }
       }
+      if (!cancelled) for (const dir of job.folders) await makeFolder(dir, key);
+      if (batch) await endBatch(batch, label, key);
+      truncated = truncated || job.truncated;
     }
     cancelBtn.hidden = true;
-    uploading = false;
-    if (!cancelled) for (const dir of folders) await makeFolder(dir, key);
-    if (batch) await endBatch(batch, label, key);
     if (cancelled) {
+      jobs.length = 0;
       progressRow.hidden = true;
       bar.style.width = '0%';
       status.textContent = UP_MSG.cancelled;
@@ -1601,28 +1641,28 @@ const UPLOAD_JS: &str = r#"
     if (failed) {
       progressRow.hidden = true;
       bar.style.width = '0%';
-      status.textContent = failed + ' / ' + items.length + ' · ' + lastError;
+      status.textContent = failed + ' / ' + done + ' · ' + lastError;
       retryBtn.hidden = false;
       progress.classList.remove('done');
       status.classList.remove('done');
-    } else {
-      bar.style.width = '100%';
-      progress.classList.add('done');
-      status.classList.add('done');
-      status.textContent = '\u2713 ' + UP_MSG.done
-        + (truncated ? ' ' + UP_MSG.limit.replace('{n}', String(MAX_ITEMS)) : '');
-      setTimeout(() => {
-        progress.classList.remove('done');
-        status.classList.remove('done');
-        progressRow.hidden = true;
-        bar.style.width = '0%';
-      }, 1600);
-      // In-place refresh: the new file appears without a page flash, and the
-      // tick above stays on screen long enough to be seen before the dialog
-      // closes itself. Failures keep the dialog open for the retry button.
-      setTimeout(() => { void refreshListing(); }, 700);
-      setTimeout(() => { closeModal(); }, 1300);
+      return;
     }
+    bar.style.width = '100%';
+    progress.classList.add('done');
+    status.classList.add('done');
+    status.textContent = '\u2713 ' + UP_MSG.done
+      + (truncated ? ' ' + UP_MSG.limit.replace('{n}', String(MAX_ITEMS)) : '');
+    setTimeout(() => {
+      progress.classList.remove('done');
+      status.classList.remove('done');
+      progressRow.hidden = true;
+      bar.style.width = '0%';
+    }, 1600);
+    // In-place refresh: the new files appear without a page flash, and the tick
+    // above stays on screen long enough to be seen before the dialog closes
+    // itself. Failures keep the dialog open for the retry button.
+    setTimeout(() => { void refreshListing(); }, 700);
+    setTimeout(() => { closeModal(); }, 1300);
   }
 
   cancelBtn.addEventListener('click', () => {
