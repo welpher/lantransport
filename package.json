@@ -9,10 +9,11 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "icons": "node scripts/make-icons.mjs && tauri icon assets/icon.png",
-    "check": "tsc --noEmit && cargo check --manifest-path src-tauri/Cargo.toml",
+    "check": "tsc --noEmit && node scripts/check-css-fallbacks.mjs && cargo check --manifest-path src-tauri/Cargo.toml",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "preview:ui": "vite --config dev/preview.config.ts",
-    "i18n:check": "node scripts/check-i18n.mjs"
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "check:css": "node scripts/check-css-fallbacks.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

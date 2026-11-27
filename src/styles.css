@@ -71,6 +71,9 @@ body {
 .app::-webkit-scrollbar { width: 11px; height: 11px; }
 .app::-webkit-scrollbar-track, .app::-webkit-scrollbar-corner { background: transparent; }
 .app::-webkit-scrollbar-thumb {
+  /* Plain rgba first: color-mix() is Safari 16.2 / Chrome 111, and the webview
+     on older macOS is older than that. */
+  background-color: rgba(128, 128, 128, .45);
   background-color: color-mix(in srgb, var(--muted) 45%, transparent);
   border-radius: 999px;
   border: 3px solid transparent;
@@ -148,15 +151,18 @@ main.stack > .tabbar { flex: 0 0 auto; }
      appear. */
   overflow-y: auto;
   scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, .55) rgba(128, 128, 128, .12);
   scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) color-mix(in srgb, var(--muted) 12%, transparent);
 }
 .panel::-webkit-scrollbar { width: 11px; height: 11px; }
 .panel::-webkit-scrollbar-track,
 .panel::-webkit-scrollbar-corner {
+  background: rgba(128, 128, 128, .12);
   background: color-mix(in srgb, var(--muted) 12%, transparent);
   border-radius: 999px;
 }
 .panel::-webkit-scrollbar-thumb {
+  background-color: rgba(128, 128, 128, .50);
   background-color: color-mix(in srgb, var(--muted) 50%, transparent);
   border-radius: 999px;
   border: 3px solid transparent;
@@ -295,7 +301,9 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .primary:disabled { opacity: 0.6; cursor: default; filter: none; }
 .primary.stop { background: transparent; color: var(--danger); border: 1px solid var(--line); font-weight: 500; }
 .error {
+  border: 1px solid rgba(217, 45, 32, .40);
   border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  background: rgba(217, 45, 32, .10);
   background: color-mix(in srgb, var(--danger) 10%, transparent);
   color: var(--danger);
   border-radius: 10px;
@@ -420,6 +428,7 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(37, 99, 235, .10);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
 }
