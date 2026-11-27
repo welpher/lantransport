@@ -26,11 +26,13 @@ const snapshot = {
   started_at_ms: null,
   last_error: null,
   recent: [
-    { name: "holiday.mp4", bytes: 1288490188, peer: "192.168.1.7", dir: "/Users/me/Downloads", at: 1795690000 },
-    { name: "contract.pdf", bytes: 860160, peer: "192.168.1.9", dir: "/Volumes/Photos", at: 1795686000 },
-    { name: "Screenshot 2026-11-26 at 19.02.11.png", bytes: 483328, peer: "192.168.1.12", dir: "/Users/me/Downloads", at: 1795681000 },
+    { name: "temporal", bytes: 182000, peer: "192.168.10.100", dir: "/Users/me/Downloads/temporal", at: 1795690000, files: 13 },
+    { name: "holiday.mp4", bytes: 1288490188, peer: "192.168.1.7", dir: "/Users/me/Downloads", at: 1795689000, files: 1 },
+    { name: "", bytes: 524288, peer: "192.168.1.9", dir: "/Volumes/Photos", at: 1795686000, files: 4 },
+    { name: "contract.pdf", bytes: 860160, peer: "192.168.1.9", dir: "/Volumes/Photos", at: 1795685000, files: 1 },
+    { name: "Screenshot 2026-11-26 at 19.02.11.png", bytes: 483328, peer: "192.168.1.12", dir: "/Users/me/Downloads", at: 1795681000, files: 1 },
     // The folder is gone, so opening it has to show a localised message.
-    { name: "old-report.pdf", bytes: 220200, peer: "192.168.1.20", dir: "/Volumes/Gone/2024", at: 1795676000 },
+    { name: "old-report.pdf", bytes: 220200, peer: "192.168.1.20", dir: "/Volumes/Gone/2024", at: 1795676000, files: 1 },
   ],
 };
 

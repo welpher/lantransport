@@ -430,6 +430,84 @@ fn folder_upload_can_create_an_empty_folder() {
 }
 
 #[test]
+fn a_batch_is_one_notice_per_file_and_one_end() {
+    use std::sync::{Arc, Mutex};
+    type Seen = Arc<Mutex<Vec<(String, Option<String>)>>>;
+    let root = temp_root("batch");
+    let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+    let ended: Seen = Arc::new(Mutex::new(Vec::new()));
+    {
+        let seen_hook = Arc::clone(&seen);
+        let ended_hook = Arc::clone(&ended);
+        let server = ServerHandle::start(
+            std::slice::from_ref(&root),
+            0,
+            false,
+            None,
+            UploadConfig {
+                enabled: true,
+                key: "k3y".into(),
+                max_bytes: 1024,
+            },
+            None,
+            Some(lantransport_lib::server::Hooks {
+                on_urls_changed: None,
+                on_upload: Some(Arc::new(move |notice| {
+                    seen_hook.lock().unwrap().push((notice.name, notice.batch));
+                })),
+                on_batch_end: Some(Arc::new(move |end| {
+                    ended_hook.lock().unwrap().push((end.id, end.label));
+                })),
+            }),
+        )
+        .expect("server starts");
+
+        put(
+            server.port,
+            "path=trip%2Fa.txt&batch=b1",
+            Some("k3y"),
+            "one",
+        );
+        put(
+            server.port,
+            "path=trip%2Fb.txt&batch=b1",
+            Some("k3y"),
+            "two",
+        );
+        put(server.port, "path=trip%2Fc.txt", Some("k3y"), "three");
+        assert!(
+            ended.lock().unwrap().is_empty(),
+            "the batch only ends when the page says so"
+        );
+
+        let end = send(
+            server.port,
+            "PUT /upload?end=1&batch=b1&blabel=trip HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        assert_eq!(end.status, 204);
+        assert_eq!(
+            *ended.lock().unwrap(),
+            vec![("b1".to_string(), Some("trip".to_string()))]
+        );
+
+        let missing = send(
+            server.port,
+            "PUT /upload?end=1 HTTP/1.1\r\nHost: test\r\nX-Upload-Key: k3y\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        );
+        assert_eq!(missing.status, 400);
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 3);
+    assert_eq!(seen[0], ("a.txt".to_string(), Some("b1".to_string())));
+    assert_eq!(seen[1], ("b.txt".to_string(), Some("b1".to_string())));
+    assert_eq!(
+        seen[2],
+        ("c.txt".to_string(), None),
+        "plain uploads stay single"
+    );
+}
+
+#[test]
 fn folder_upload_resumes_from_the_relative_path() {
     let (root, server) = upload_server("folder-resume");
     let partial = send(
@@ -1003,6 +1081,7 @@ fn reports_finished_uploads_to_the_desktop() {
         Some(lantransport_lib::server::Hooks {
             on_urls_changed: None,
             on_upload: Some(hook),
+            on_batch_end: None,
         }),
     )
     .expect("server starts");

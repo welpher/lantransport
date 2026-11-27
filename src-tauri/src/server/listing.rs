@@ -1406,10 +1406,34 @@ const UPLOAD_JS: &str = r#"
     try { return decodeURIComponent(location.pathname); } catch (e) { return location.pathname; }
   }
 
-  function uploadUrl(item) {
+  function uploadUrl(item, batch) {
     return '/upload?dir=' + encodeURIComponent(currentDir())
       + '&path=' + encodeURIComponent(item.path)
-      + '&name=' + encodeURIComponent(item.file.name);
+      + '&name=' + encodeURIComponent(item.file.name)
+      + (batch ? '&batch=' + batch : '');
+  }
+
+  // A drop of several files is one batch: the app shows a single entry and a
+  // single notification for it once the last file is through.
+  function newBatch() {
+    return 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  // The folder name to show for a batch, or '' when the files do not share one
+  // (a multi-file pick, or several folders dropped at once).
+  function batchLabel(items) {
+    const top = items[0].path.split('/')[0];
+    if (!items[0].path.includes('/')) return '';
+    return items.every(item => item.path.split('/')[0] === top) ? top : '';
+  }
+
+  async function endBatch(batch, label, key) {
+    const url = '/upload?end=1&batch=' + batch + (label ? '&blabel=' + encodeURIComponent(label) : '');
+    try {
+      await fetch(url, { method: 'PUT', headers: { 'X-Upload-Key': key } });
+    } catch (error) {
+      // The files landed; only the summary is missing.
+    }
   }
 
   // Folders without any file would otherwise vanish, so they are created with a
@@ -1437,9 +1461,9 @@ const UPLOAD_JS: &str = r#"
     }
   }
 
-  async function send(item, key, onProgress) {
+  async function send(item, key, onProgress, batch) {
     const file = item.file;
-    const url = uploadUrl(item);
+    const url = uploadUrl(item, batch);
     const offset = Math.min(await bytesAlreadyThere(url, key), file.size);
     if (file.size > 0 && offset >= file.size) return;
     return new Promise((resolve, reject) => {
@@ -1472,6 +1496,7 @@ const UPLOAD_JS: &str = r#"
     retryItems = [];
     retryBtn.hidden = true;
     const total = items.reduce((sum, item) => sum + item.file.size, 0);
+    const batch = items.length > 1 ? newBatch() : '';
     let sent = 0;
     let failed = 0;
     let lastError = '';
@@ -1492,7 +1517,7 @@ const UPLOAD_JS: &str = r#"
       let attempt = 0;
       while (true) {
         try {
-          await send(items[index], key, loaded => report(index, loaded));
+          await send(items[index], key, loaded => report(index, loaded), batch);
           sent += items[index].file.size;
           break;
         } catch (error) {
@@ -1515,6 +1540,7 @@ const UPLOAD_JS: &str = r#"
       }
     }
     for (const dir of folders) await makeFolder(dir, key);
+    if (batch) await endBatch(batch, batchLabel(items), key);
     if (failed) {
       progress.hidden = true;
       bar.style.width = '0%';

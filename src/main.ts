@@ -26,6 +26,7 @@ interface RecentUpload {
   peer: string;
   dir: string;
   at: number;
+  files: number;
 }
 
 interface Snapshot {
@@ -231,6 +232,7 @@ function text() {
     activityTitle: t("ui.recent_title"),
     activityHint: t("ui.recent_hint"),
     recentEmpty: t("ui.recent_empty"),
+    recentFiles: t("ui.recent_files"),
     groupConnection: t("ui.group_connection"),
     groupUploads: t("ui.group_uploads"),
     groupBehavior: t("ui.group_behavior"),
@@ -284,17 +286,25 @@ function humanSize(bytes: number): string {
   return `${unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
+const FOLDER_GLYPH = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/></svg>';
+const FILE_GLYPH = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+
 function renderRecent(): void {
   const label = text();
   const recent = snapshot?.recent ?? [];
   const rows = recent.map((item) => {
+    const files = item.files || 1;
     const row = document.createElement("div");
     row.className = "recent-item";
 
+    const icon = document.createElement("span");
+    icon.className = "recent-icon";
+    icon.innerHTML = files > 1 ? FOLDER_GLYPH : FILE_GLYPH;
+
     const name = document.createElement("span");
     name.className = "recent-name";
-    name.textContent = item.name;
-    name.title = item.name;
+    name.textContent = item.name || label.recentFiles.replace("{n}", String(files));
+    name.title = name.textContent;
 
     const meta = document.createElement("span");
     meta.className = "recent-meta";
@@ -302,7 +312,11 @@ function renderRecent(): void {
       hour: "2-digit",
       minute: "2-digit",
     });
-    meta.textContent = `${humanSize(item.bytes)} · ${item.peer} · ${time}`;
+    const parts = [];
+    if (item.name && files > 1) parts.push(label.recentFiles.replace("{n}", String(files)));
+    parts.push(humanSize(item.bytes), item.peer, time);
+    meta.textContent = parts.join(" · ");
+    meta.title = meta.textContent;
 
     const reveal = document.createElement("button");
     reveal.className = "icon-btn";
@@ -311,7 +325,7 @@ function renderRecent(): void {
     reveal.setAttribute("aria-label", label.reveal);
     reveal.addEventListener("click", () => void openFolder(item.dir));
 
-    row.append(name, meta, reveal);
+    row.append(icon, name, meta, reveal);
     return row;
   });
   if (!rows.length) {

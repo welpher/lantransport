@@ -401,18 +401,30 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
   padding: 3px 8px;
   white-space: nowrap;
 }
+.recent { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
 .recent-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 8px;
+  border-radius: 9px;
   font-size: 13px;
+  transition: background-color .12s ease;
 }
-.recent-item:last-child { border-bottom: none; }
-.recent-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recent-meta { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.recent-item:hover { background: var(--row-hover); }
+.recent-icon {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+.recent-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.recent-meta { flex: 0 0 auto; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .folders-empty {
   display: flex;
   flex-direction: column;

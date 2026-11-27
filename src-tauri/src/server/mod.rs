@@ -37,9 +37,21 @@ pub struct UploadNotice {
     pub bytes: u64,
     pub peer: std::net::IpAddr,
     pub dir: PathBuf,
+    /// Set when the page uploads several files in one go, so the app can show
+    /// one entry and one notification for the whole drop.
+    pub batch: Option<String>,
 }
 
 pub type UploadHook = Arc<dyn Fn(UploadNotice) + Send + Sync>;
+
+/// The page says a batch is finished; the app can then summarise it.
+pub struct UploadBatch {
+    pub id: String,
+    pub label: Option<String>,
+    pub peer: std::net::IpAddr,
+}
+
+pub type BatchHook = Arc<dyn Fn(UploadBatch) + Send + Sync>;
 
 /// Callbacks the desktop app hangs off the server; the server itself stays
 /// Tauri-free.
@@ -47,6 +59,7 @@ pub type UploadHook = Arc<dyn Fn(UploadNotice) + Send + Sync>;
 pub struct Hooks {
     pub on_urls_changed: Option<Arc<dyn Fn() + Send + Sync>>,
     pub on_upload: Option<UploadHook>,
+    pub on_batch_end: Option<BatchHook>,
 }
 
 pub struct ServerContext {
@@ -57,6 +70,7 @@ pub struct ServerContext {
     pub upload: RwLock<UploadConfig>,
     pub upload_limiter: auth::AuthLimiter,
     pub on_upload: Option<UploadHook>,
+    pub on_batch_end: Option<BatchHook>,
 }
 
 pub struct ServerHandle {
@@ -194,6 +208,7 @@ impl ServerHandle {
         let Hooks {
             on_urls_changed,
             on_upload,
+            on_batch_end,
         } = hooks.unwrap_or_default();
         let context = Arc::new(ServerContext {
             log,
@@ -203,6 +218,7 @@ impl ServerHandle {
             upload: RwLock::new(upload),
             upload_limiter: auth::AuthLimiter::default(),
             on_upload,
+            on_batch_end,
         });
         let context_for_handle = Arc::clone(&context);
         let shutdown = Arc::new(AtomicBool::new(false));

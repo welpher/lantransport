@@ -140,6 +140,42 @@ pub fn open_folder(path: &std::path::Path) -> bool {
     spawned
 }
 
+/// Folds one uploaded file into the batch it belongs to.
+fn accumulate(batch: &mut crate::state::PendingBatch, notice: &crate::server::UploadNotice) {
+    let dir = notice.dir.to_string_lossy().into_owned();
+    batch.files += 1;
+    batch.bytes += notice.bytes;
+    batch.peer = notice.peer.to_string();
+    batch.dir = Some(match batch.dir.take() {
+        None => dir,
+        Some(previous) => common_ancestor(&previous, &dir),
+    });
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs())
+        .unwrap_or(0)
+}
+
+/// The deepest folder two paths share, so a drop that spread over subfolders
+/// still opens at the folder it came from.
+fn common_ancestor(a: &str, b: &str) -> String {
+    let mut shared = std::path::PathBuf::new();
+    for (left, right) in Path::new(a).components().zip(Path::new(b).components()) {
+        if left != right {
+            break;
+        }
+        shared.push(left);
+    }
+    if shared.as_os_str().is_empty() {
+        a.to_string()
+    } else {
+        shared.to_string_lossy().into_owned()
+    }
+}
+
 /// The nearest folder at or above `path`. The folder remembered for an upload
 /// can be gone later — the visitor's subfolder was deleted, or the share was
 /// removed — and walking up beats failing with an error the page cannot explain.
@@ -243,6 +279,26 @@ fn start_server(
     let upload_app = app.clone();
     let on_upload: crate::server::UploadHook = Arc::new(move |notice| {
         let state = upload_app.state::<AppState>();
+        let now = unix_now();
+        if let Some(id) = notice.batch.clone() {
+            // Part of a drop: nothing is shown until the page closes the batch,
+            // so a 300-file folder does not become 300 rows and 300 toasts.
+            let mut batches = state
+                .batches
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            // A page that vanished mid-upload leaves its batch behind; ten
+            // minutes of silence is enough to forget it.
+            batches.retain(|_, batch| now.saturating_sub(batch.started) < 600);
+            let batch = batches
+                .entry(id)
+                .or_insert_with(|| crate::state::PendingBatch {
+                    started: now,
+                    ..Default::default()
+                });
+            accumulate(batch, &notice);
+            return;
+        }
         {
             let mut recent = state
                 .recent
@@ -253,10 +309,8 @@ fn start_server(
                 bytes: notice.bytes,
                 peer: notice.peer.to_string(),
                 dir: notice.dir.to_string_lossy().into_owned(),
-                at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|value| value.as_secs())
-                    .unwrap_or(0),
+                at: now,
+                files: 1,
             });
             while recent.len() > crate::state::RECENT_LIMIT {
                 recent.pop_back();
@@ -287,6 +341,85 @@ fn start_server(
             &format!("uploaded {} from {}", notice.name, notice.peer),
         );
     });
+
+    let batch_app = app.clone();
+    let on_batch_end: crate::server::BatchHook = Arc::new(move |end| {
+        let state = batch_app.state::<AppState>();
+        let pending = state
+            .batches
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&end.id);
+        // Nothing arrived for this batch, so there is nothing to report.
+        let Some(pending) = pending else {
+            return;
+        };
+        if pending.files == 0 {
+            return;
+        }
+        let name = end.label.clone().unwrap_or_default();
+        let dir = pending.dir.clone().unwrap_or_default();
+        {
+            let mut recent = state
+                .recent
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            recent.push_front(crate::state::RecentUpload {
+                name: name.clone(),
+                bytes: pending.bytes,
+                peer: pending.peer.clone(),
+                dir: dir.clone(),
+                at: unix_now(),
+                files: pending.files,
+            });
+            while recent.len() > crate::state::RECENT_LIMIT {
+                recent.pop_back();
+            }
+        }
+        notify(&batch_app);
+        let locale = state.ui_locale();
+        let size = crate::server::listing::human_size(pending.bytes);
+        let files = pending.files.to_string();
+        let body = if name.is_empty() {
+            i18n::t_args(
+                &locale,
+                "notify.uploaded_many",
+                &[
+                    ("files", files.clone()),
+                    ("size", size.clone()),
+                    ("peer", pending.peer.clone()),
+                ],
+            )
+        } else {
+            i18n::t_args(
+                &locale,
+                "notify.uploaded_folder",
+                &[
+                    ("name", name.clone()),
+                    ("files", files.clone()),
+                    ("size", size.clone()),
+                    ("peer", pending.peer.clone()),
+                ],
+            )
+        };
+        if let Err(error) = batch_app
+            .notification()
+            .builder()
+            .title("LanTransport")
+            .body(body)
+            .show()
+        {
+            append_log(&batch_app, &format!("upload notification failed: {error}"));
+        }
+        append_log(
+            &batch_app,
+            &format!(
+                "uploaded folder={name:?} files={} bytes={} dir={dir} from {}",
+                pending.files, pending.bytes, pending.peer
+            ),
+        );
+    });
+
     let handle = ServerHandle::start(
         &paths,
         port,
@@ -297,6 +430,7 @@ fn start_server(
         Some(crate::server::Hooks {
             on_urls_changed: Some(on_urls_changed),
             on_upload: Some(on_upload),
+            on_batch_end: Some(on_batch_end),
         }),
     )
     .map_err(|error| error_code(&error))?;
@@ -555,12 +689,56 @@ pub fn update_password(
 
 #[cfg(test)]
 mod share_tests {
-    use super::{nearest_folder, normalize_shares};
+    use super::{accumulate, common_ancestor, nearest_folder, normalize_shares};
+
+    /// Paths come out with the platform separator, so compare folders the way
+    /// std does instead of comparing strings.
+    fn same_folder(actual: &str, expected: &str) -> bool {
+        std::path::Path::new(actual) == std::path::Path::new(expected)
+    }
 
     #[test]
     fn shares_are_trimmed_and_deduplicated() {
         let out = normalize_shares(vec![" /a ".into(), String::new(), "/a".into(), "/b".into()]);
         assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]);
+    }
+
+    #[test]
+    fn a_batch_counts_files_bytes_and_the_shared_folder() {
+        let mut batch = crate::state::PendingBatch::default();
+        let notice = |name: &str, dir: &str, bytes: u64| crate::server::UploadNotice {
+            name: name.to_string(),
+            bytes,
+            peer: "192.168.1.7".parse().unwrap(),
+            dir: std::path::PathBuf::from(dir),
+            batch: Some("b1".to_string()),
+        };
+        accumulate(&mut batch, &notice("a.txt", "/s/trip/day1", 10));
+        accumulate(&mut batch, &notice("b.txt", "/s/trip/day2", 5));
+        assert_eq!(batch.files, 2);
+        assert_eq!(batch.bytes, 15);
+        assert_eq!(batch.peer, "192.168.1.7");
+        assert!(
+            same_folder(batch.dir.as_deref().unwrap_or_default(), "/s/trip"),
+            "got {:?}",
+            batch.dir
+        );
+    }
+
+    #[test]
+    fn a_batch_opens_at_the_folder_its_files_share() {
+        assert!(same_folder(
+            &common_ancestor("/s/trip/day1", "/s/trip/day2"),
+            "/s/trip"
+        ));
+        assert!(same_folder(
+            &common_ancestor("/s/trip/day1", "/s/trip/day1"),
+            "/s/trip/day1"
+        ));
+        assert!(
+            same_folder(&common_ancestor("/s/trip", "/s/other"), "/s"),
+            "a drop spread over two folders opens at their parent"
+        );
     }
 
     #[test]
