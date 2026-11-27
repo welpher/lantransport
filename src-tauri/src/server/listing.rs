@@ -209,7 +209,6 @@ pub fn render(
         String::new()
     };
 
-
     let upload_modal = if uploads {
         format!(
             r#"<div class="modal" id="up-modal" hidden>
