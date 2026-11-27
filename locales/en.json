@@ -134,5 +134,6 @@
   "page.find_count": "{n} matches",
   "page.find_back": "Back to the folder",
   "tray.logs": "Open logs folder",
-  "ui.drop_hint": "or drag a folder into this window"
+  "ui.drop_hint": "or drag a folder into this window",
+  "upload.drag_hint": "You can also drop files anywhere on this page"
 }
