@@ -5,7 +5,7 @@ const lang = params.get("lang") ?? "en";
 const locale = lang === "zh" || lang === "zh-CN" ? "zh-CN" : "en";
 
 const snapshot = {
-  version: "0.1.0",
+  version: "0.3.3",
   platform: "macos",
   settings: {
     shares: params.get("empty") === "1" ? [] : ["/Users/me/Downloads", "/Volumes/Photos"],
