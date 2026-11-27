@@ -9,18 +9,25 @@ an **upload key** can also drop files into the folder they are viewing.
 No account, no cloud, no relay: the files never leave your network.
 
 ```
-┌──────────────────────────────────────────┐
-│  LanTransport               ●  Sharing   │
-│                                          │
-│  Folder                                  │
-│  /Users/me/Downloads           [Choose…] │
-│  Port 8787      [x] Allow LAN access     │
-│                                          │
-│  [x] Allow uploads with a key            │
-│      k7m3qp9x2f   [Copy] [Regenerate]    │
-│                                          │
-│  http://192.168.1.24:8787  [Copy]        │
-└──────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  ▪ LanTransport            ● Sharing    Theme  English   │
+│    Turn any folder into a LAN file page                  │
+│                                                          │
+│    Share   Activity   Settings          [Stop sharing]   │
+│                                                          │
+│    Folders                                  [Add folder] │
+│    /Users/me/Downloads                      [Open] [×]   │
+│                                                          │
+│    Sharing  /Users/me/Downloads                  ● Live  │
+│    ┌──────┐   Links                          [Copy]      │
+│    │ ▓▓▓▓ │   http://192.168.1.24:8123                   │
+│    │ ▓▓▓▓ │   http://192.168.1.31:8123                   │
+│    │ ▓▓▓▓ │   [Open in browser]                          │
+│    └──────┘                                              │
+│    Upload key  k7m3qp9x2f  [Copy key] [Upload link]      │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## Features
@@ -35,6 +42,8 @@ No account, no cloud, no relay: the files never leave your network.
 - **Optional password** for browsing (HTTP Basic, username `share`)
 - **Key-gated uploads**: rotate the key anytime; files land in the folder the visitor
   is browsing (the first folder's `uploads/` is used by older links)
+- **Folder upload**: drop a folder on the share page and its folders are
+  recreated; empty folders included, 2000 files max per drop
 - **QR code** for the LAN link, one click to copy
 - **Tray app**: keeps sharing while the window is closed; start/stop from the tray
 - **Always LAN-bound**: the server listens on your local network; there is no local-only mode to misconfigure
