@@ -1172,15 +1172,30 @@ const UPLOAD_JS: &str = r#"
   });
   syncActions();
 
+  const resetProgress = () => {
+    status.textContent = '';
+    status.classList.remove('done');
+    progress.hidden = true;
+    progress.classList.remove('done');
+    progress.classList.remove('fade');
+    bar.style.width = '0%';
+    retryBtn.hidden = true;
+    retryFiles = [];
+  };
+
   const openModal = () => {
     modal.hidden = false;
+    resetProgress();
     // The dialog has its own drop zone; dismiss the page-wide banner if a drag
     // opened it a moment earlier.
     overlay.hidden = true;
     depth = 0;
     if (!keyInput.value.trim()) keyInput.focus();
   };
-  const closeModal = () => { modal.hidden = true; };
+  const closeModal = () => {
+    modal.hidden = true;
+    resetProgress();
+  };
   if (openBtn) openBtn.addEventListener('click', openModal);
   if (keyBtn) keyBtn.addEventListener('click', openModal);
   closeBtn.addEventListener('click', closeModal);
@@ -1368,8 +1383,10 @@ const UPLOAD_JS: &str = r#"
         bar.style.width = '0%';
       }, 1600);
       // In-place refresh: the new file appears without a page flash, and the
-      // tick above stays on screen long enough to be seen.
-      setTimeout(() => { void refreshListing(); }, 800);
+      // tick above stays on screen long enough to be seen before the dialog
+      // closes itself. Failures keep the dialog open for the retry button.
+      setTimeout(() => { void refreshListing(); }, 700);
+      setTimeout(() => { closeModal(); }, 1300);
     }
   }
 
