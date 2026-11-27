@@ -50,6 +50,23 @@ fn relative_path(query: &[(String, String)]) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
+/// The id the page gives to every file of one drop. Kept to a small alphabet so
+/// it is safe to log and to key a map with.
+fn batch_id(query: &[(String, String)]) -> Option<String> {
+    let raw = query
+        .iter()
+        .find(|(key, _)| key == "batch")
+        .map(|(_, value)| value.as_str())
+        .filter(|value| !value.is_empty() && value.len() <= 64)?;
+    if !raw
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    Some(raw.to_string())
+}
+
 /// Where a finished upload lands: the folder the visitor is looking at, or the
 /// legacy `uploads/` folder of the first share for pages that do not ask.
 fn upload_target(ctx: &ServerContext, query: &[(String, String)]) -> Option<PathBuf> {
@@ -152,6 +169,33 @@ pub fn handle<R: BufRead>(
 
     let (_, raw_query) = split_target(&request.target);
     let query = query_pairs(raw_query);
+
+    // A page that sends a whole folder marks every file with a batch id and then
+    // closes the batch with `end=1`, so the app can show one entry and one
+    // notification instead of one per file.
+    let batch = batch_id(&query);
+    if query_param(&request.target, "end").is_some_and(|value| value == "1") {
+        let Some(id) = batch else {
+            return (fail(400, locale, "upload.err.bad_name"), false);
+        };
+        let label = query
+            .iter()
+            .find(|(key, _)| key == "blabel")
+            .map(|(_, value)| value.as_str())
+            .and_then(safe_file_name);
+        super::log_event(
+            ctx,
+            &format!("upload batch end peer={peer} id=\"{id}\" label={label:?}"),
+        );
+        if let Some(hook) = &ctx.on_batch_end {
+            hook(super::UploadBatch { id, label, peer });
+        }
+        return (
+            Response::empty(204).header("Cache-Control", "no-store"),
+            true,
+        );
+    }
+
     let (name, resume_key) = match destination_name(&query) {
         Ok(found) => found,
         Err(key) => return (fail(400, locale, key), false),
@@ -226,8 +270,9 @@ pub fn handle<R: BufRead>(
     super::log_event(
         ctx,
         &format!(
-            "upload start peer={peer} name=\"{}\" te={:?} cl={:?} offset={offset:?} total={total:?} ua=\"{}\"",
+            "upload start peer={peer} name=\"{}\" batch={:?} te={:?} cl={:?} offset={offset:?} total={total:?} ua=\"{}\"",
             name,
+            batch,
             request.header("transfer-encoding"),
             request.header("content-length"),
             request.header("user-agent").unwrap_or("-")
@@ -315,7 +360,7 @@ pub fn handle<R: BufRead>(
         .unwrap_or(name);
     super::log_event(
         ctx,
-        &format!("upload ok peer={peer} name=\"{saved}\" bytes={written}"),
+        &format!("upload ok peer={peer} name=\"{saved}\" batch={batch:?} bytes={written}"),
     );
     if let Some(hook) = &ctx.on_upload {
         hook(super::UploadNotice {
@@ -323,6 +368,7 @@ pub fn handle<R: BufRead>(
             bytes: written,
             peer,
             dir: directory.clone(),
+            batch,
         });
     }
     let body = format!(

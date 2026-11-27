@@ -16,6 +16,19 @@ pub struct RecentUpload {
     pub peer: String,
     pub dir: String,
     pub at: u64,
+    /// How many files arrived in one drop; 1 for a plain upload.
+    pub files: u32,
+}
+
+/// Files of one drop that have arrived so far, keyed by the id the page sends.
+/// The page closes the batch with `end=1` and the app then writes one entry.
+#[derive(Default)]
+pub struct PendingBatch {
+    pub peer: String,
+    pub files: u32,
+    pub bytes: u64,
+    pub dir: Option<String>,
+    pub started: u64,
 }
 
 pub const RECENT_LIMIT: usize = 50;
@@ -23,6 +36,7 @@ pub const RECENT_LIMIT: usize = 50;
 pub struct AppState {
     pub settings: Mutex<Settings>,
     pub recent: Mutex<VecDeque<RecentUpload>>,
+    pub batches: Mutex<std::collections::HashMap<String, PendingBatch>>,
     pub server: Mutex<Option<ServerHandle>>,
     pub last_error: Mutex<Option<String>>,
     pub shutting_down: Mutex<bool>,
@@ -33,6 +47,7 @@ impl AppState {
         Self {
             settings: Mutex::new(Settings::load(app)),
             recent: Mutex::new(VecDeque::new()),
+            batches: Mutex::new(std::collections::HashMap::new()),
             server: Mutex::new(None),
             last_error: Mutex::new(None),
             shutting_down: Mutex::new(false),
