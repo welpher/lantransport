@@ -135,5 +135,7 @@
   "page.find_back": "Back to the folder",
   "tray.logs": "Open logs folder",
   "ui.drop_hint": "or drag a folder into this window",
-  "upload.drag_hint": "You can also drop files anywhere on this page"
+  "upload.drag_hint": "You can also drop files anywhere on this page",
+  "upload.key_hint": "Ask whoever shares the folder for the upload key. It is stored on this device after you type it, so you only enter it once.",
+  "upload.key_drop_hint": "Once the key is entered, drop files anywhere on this page (or use the button below)."
 }

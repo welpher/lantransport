@@ -209,15 +209,6 @@ pub fn render(
         String::new()
     };
 
-    let drag_hint = if uploads {
-        format!(
-            "<p class=\"drag-hint\"><svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 16V4\"/><path d=\"m7.5 8.5 4.5-4.5 4.5 4.5\"/><path d=\"M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3\"/></svg>{}</p>",
-            escape_html(&t("upload.drag_hint"))
-        )
-    } else {
-        String::new()
-    };
-
     let upload_modal = if uploads {
         format!(
             r#"<div class="modal" id="up-modal" hidden>
@@ -232,6 +223,8 @@ pub fn render(
         <button class="clear-btn" id="up-clear" type="button" aria-label="{clear}" title="{clear}" hidden>×</button>
       </div>
     </div>
+    <p class="key-hint hint">{key_hint}</p>
+    <p class="key-hint hint key-drop">{key_drop_hint}</p>
     <div class="up-area" id="up-area" hidden>
       <div class="drop" id="up-drop">
         <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/><path d="M12 11v5"/><path d="M9.8 13.8 12 16l2.2-2.2"/></svg></span>
@@ -255,6 +248,8 @@ pub fn render(
             drop = escape_html(&t("upload.drop")),
             choose = escape_html(&t("upload.choose")),
             key = escape_html(&t("upload.key")),
+            key_hint = escape_html(&t("upload.key_hint")),
+            key_drop_hint = escape_html(&t("upload.key_drop_hint")),
             retry = escape_html(&t("upload.retry")),
             clear = escape_html(&t("upload.clear")),
             dropping = escape_html(&t("upload.dropping")),
@@ -291,8 +286,16 @@ pub fn render(
         .collect();
 
     let empty = if entries.is_empty() {
+        let extra = if uploads {
+            format!(
+                "<span class='empty-extra'><svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 16V4'/><path d='m7.5 8.5 4.5-4.5 4.5 4.5'/><path d='M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'/></svg>{}</span>",
+                escape_html(&t("upload.drag_hint"))
+            )
+        } else {
+            String::new()
+        };
         format!(
-            "<tr><td colspan='4' class='empty'>{}</td></tr>",
+            "<tr><td colspan='4' class='empty'>{}<br>{extra}</td></tr>",
             t("page.empty")
         )
     } else {
@@ -356,7 +359,6 @@ pub fn render(
     <button class="btn" id="select-download" type="button">{download_label}</button>
     <button class="btn ghost" id="select-cancel" type="button">{cancel_label}</button>
   </div>
-  {drag_hint}
   <div class="card list-card">
     <table>
       <thead><tr><th><button class="sort" type="button" data-sort="name">{name}</button></th><th><button class="sort" type="button" data-sort="size">{size}</button></th><th class="time-head"><button class="sort" type="button" data-sort="time">{modified}</button></th><th></th></tr></thead>
@@ -392,7 +394,6 @@ pub fn render(
         nonce = escape_html(nonce),
         upload_modal = upload_modal,
         upload_button = upload_button,
-        drag_hint = drag_hint,
         select_label = escape_html(&t("page.select")),
         select_all = escape_html(&t("page.select_all")),
         download_label = escape_html(&t("page.download")),
@@ -1005,7 +1006,8 @@ select:focus-visible { border-color: var(--accent); }
   padding: 24px;
   pointer-events: none;
 }
-.drop-overlay.no-label span { display: none; }
+.drop-overlay.over-page { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.drop-overlay.over-dialog { background: color-mix(in srgb, var(--bg) 72%, transparent); }
 .drop-overlay span {
   display: inline-flex;
   align-items: center;
@@ -1096,11 +1098,11 @@ const UPLOAD_CSS: &str = r#"
 }
 .progress.done .progress-bar::after { display: none; }
 .up-status.done { color: var(--ok); font-weight: 600; }
-.drag-hint {
-  display: flex;
+.empty-extra {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: -6px 0 12px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: 12.5px;
 }
@@ -1108,6 +1110,23 @@ const UPLOAD_CSS: &str = r#"
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
 .drop.over .drop-icon { transform: translateY(-2px) scale(1.06); }
 .keyrow { display: flex; gap: 8px; }
+.key-hint { margin: 0; line-height: 1.5; }
+.key-drop {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 2px;
+}
+.key-drop::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4'/%3E%3Cpath d='m7.5 8.5 4.5-4.5 4.5 4.5'/%3E%3Cpath d='M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'/%3E%3C/svg%3E") center / contain no-repeat;
+  opacity: .7;
+}
 .keyfield { position: relative; flex: 1; min-width: 0; }
 .keyfield input { width: 100%; padding-right: 34px; }
 .clear-btn {
@@ -1217,7 +1236,10 @@ const UPLOAD_JS: &str = r#"
   const modalOpen = () => !modal.hidden;
   const showOverlay = () => {
     overlay.hidden = false;
-    overlay.classList.toggle('no-label', modalOpen());
+    // The dimmed backdrop separates the label from whatever is underneath, so
+    // it stays visible even over the upload dialog.
+    overlay.classList.toggle('over-dialog', modalOpen());
+    overlay.classList.toggle('over-page', !modalOpen());
   };
   document.addEventListener('dragenter', (event) => {
     if (!hasFiles(event)) return;
