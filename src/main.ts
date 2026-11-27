@@ -191,6 +191,7 @@ function text() {
     choose: t("ui.choose"),
     reveal: t("ui.reveal"),
     noFolder: t("ui.no_folder"),
+    dropHint: t("ui.drop_hint"),
     port: t("ui.port"),
     portAvailable: t("ui.port_available"),
     portInUse: t("ui.port_in_use"),
@@ -356,7 +357,17 @@ function renderFolders(): void {
   if (!rows.length) {
     const empty = document.createElement("div");
     empty.className = "folders-empty";
-    empty.textContent = label.noFolder;
+    empty.id = "folders-empty";
+    const icon = document.createElement("span");
+    icon.className = "empty-icon";
+    icon.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/><path d="M12 11v5"/><path d="M9.8 13.8 12 16l2.2-2.2"/></svg>';
+    const primary = document.createElement("span");
+    primary.className = "empty-title";
+    primary.textContent = label.noFolder;
+    const hint = document.createElement("span");
+    hint.className = "empty-hint";
+    hint.textContent = label.dropHint;
+    empty.append(icon, primary, hint);
     rows.push(empty);
   }
   elements.folders.replaceChildren(...rows);
@@ -736,6 +747,13 @@ async function boot(): Promise<void> {
   syncInputs();
   apply();
   void checkPort();
+
+  for (const [event, on] of [["tauri://drag-enter", true], ["tauri://drag-over", true], ["tauri://drag-leave", false], ["tauri://drag-drop", false]] as const) {
+    await listen(event, () => {
+      const empty = document.getElementById("folders-empty");
+      if (empty) empty.classList.toggle("drag", on);
+    });
+  }
 
   await listen<[number, number]>("drop-result", (event) => {
     const [added, known] = event.payload;

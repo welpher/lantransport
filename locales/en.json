@@ -133,5 +133,6 @@
   "page.find_empty": "Nothing matched in this folder or below it.",
   "page.find_count": "{n} matches",
   "page.find_back": "Back to the folder",
-  "tray.logs": "Open logs folder"
+  "tray.logs": "Open logs folder",
+  "ui.drop_hint": "or drag a folder into this window"
 }
