@@ -225,6 +225,7 @@ pub fn render(
     </div>
     <div class="up-area" id="up-area" hidden>
       <div class="drop" id="up-drop">
+        <span class="drop-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2h7.6A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-10z"/><path d="M12 11v5"/><path d="M9.8 13.8 12 16l2.2-2.2"/></svg></span>
         <div class="drop-copy">
           <strong>{drop}</strong>
           <span class="hint">{hint}</span>
@@ -1051,7 +1052,9 @@ const UPLOAD_CSS: &str = r#"
 }
 .progress.done .progress-done { opacity: 1; transform: scale(1); }
 .progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .2s; }
+.drop-icon { display: flex; flex: 0 0 auto; color: var(--accent); transition: transform .15s ease; }
 .drop.over { border-color: var(--accent); background: rgba(37, 99, 235, .06); }
+.drop.over .drop-icon { transform: translateY(-2px) scale(1.06); }
 .keyrow { display: flex; gap: 8px; }
 .keyfield { position: relative; flex: 1; min-width: 0; }
 .keyfield input { width: 100%; padding-right: 34px; }
