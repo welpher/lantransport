@@ -989,27 +989,27 @@ select:focus-visible { border-color: var(--accent); }
 .icon-x:hover { color: var(--text); background: var(--row-hover); }
 .drop-overlay {
   position: fixed;
-  inset: 0;
+  inset: 12px;
   z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: color-mix(in srgb, var(--bg) 78%, transparent);
-  backdrop-filter: blur(2px);
+  border: 3px dashed var(--accent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  backdrop-filter: blur(1px);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  padding: 24px;
   pointer-events: none;
 }
 .drop-overlay span {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 22px;
-  border: 2px dashed var(--accent);
-  border-radius: 14px;
-  background: var(--card);
-  box-shadow: 0 10px 30px rgba(16, 24, 40, .18);
-  color: var(--accent);
-  font-size: 16px;
-  font-weight: 600;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--bg) 60%, transparent);
 }
 .foot-brand { color: inherit; text-decoration: none; opacity: .7; }
 .foot-brand:hover { opacity: 1; text-decoration: underline; }
